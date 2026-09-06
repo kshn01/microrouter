@@ -7,7 +7,7 @@ import { toggleSimulationMode as toggleServiceSimulation } from '../services/web
 
 export const connectionState = writable({
   isConnected: false,
-  isSimulated: true,
+  isSimulated: false,
 })
 
 export function setConnectionStatus(status) {

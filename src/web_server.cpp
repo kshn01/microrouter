@@ -19,9 +19,13 @@ void WebServer::begin(WiFiManager& wifiMgr, OTAManager& otaMgr) {
 
     Serial.println("[Web] Initializing server...");
 
-    _setupStaticFiles();
-    _setupWebSocket();
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
     _setupApiRoutes();
+    _setupWebSocket();
+    _setupStaticFiles();
 
     _server.begin();
     Serial.printf("[Web] Server started on port %d\n", WEB_SERVER_PORT);
@@ -757,6 +761,11 @@ void WebServer::_handleSession(AsyncWebServerRequest* request) {
 // ── 404 Handler ──────────────────────────────────────────────────
 
 void WebServer::_handleNotFound(AsyncWebServerRequest* request) {
+    if (request->method() == HTTP_OPTIONS) {
+        request->send(200);
+        return;
+    }
+
     // For API routes — return JSON 404
     if (request->url().startsWith("/api/")) {
         request->send(404, "application/json",

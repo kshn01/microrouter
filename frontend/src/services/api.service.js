@@ -64,7 +64,7 @@ async function fetchWithTimeout(url, options = {}) {
  * Fetch system diagnostic information
  */
 export async function apiFetchSystemInfo() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockSystemInfo()
   }
 
@@ -80,7 +80,7 @@ export async function apiFetchSystemInfo() {
  * Trigger an asynchronous WiFi network scan
  */
 export async function apiScanWiFiNetworks() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 1200))
     return { networks: getMockWifiNetworks() }
   }
@@ -99,7 +99,7 @@ export async function apiScanWiFiNetworks() {
  * @param {string} password
  */
 export async function apiConnectWiFi(ssid, password) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 800))
     showToast(`Connected to "${ssid}" in Simulation Mode`, 'success')
     return { status: 'connecting', ssid }
@@ -116,7 +116,7 @@ export async function apiConnectWiFi(ssid, password) {
  * Clear stored WiFi credentials (reset to AP mode)
  */
 export async function apiDisconnectWiFi() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 600))
     showToast('Reset to AP mode in Simulation Mode', 'warning')
     return { status: 'disconnected' }
@@ -129,7 +129,7 @@ export async function apiDisconnectWiFi() {
  * Restart the ESP32 micro-controller
  */
 export async function apiRestartSystem() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     showToast('Restart signal simulated', 'info')
     return { status: 'ok' }
   }
@@ -146,7 +146,7 @@ export async function apiRestartSystem() {
 // ───────────────────────────────────────────────────────────────────
 
 export async function apiGetDnsConfig() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockDnsConfig()
   }
   try {
@@ -158,7 +158,7 @@ export async function apiGetDnsConfig() {
 }
 
 export async function apiSetDnsConfig(config) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 400))
     showToast('DNS Shield settings updated (Simulated)', 'success')
     return setMockDnsConfig(config)
@@ -171,7 +171,7 @@ export async function apiSetDnsConfig(config) {
 }
 
 export async function apiGetDnsQueries() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockDnsQueries()
   }
   try {
@@ -182,7 +182,7 @@ export async function apiGetDnsQueries() {
 }
 
 export async function apiClearDnsQueries() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return clearMockDnsQueries()
   }
   return await fetchWithTimeout(API_ENDPOINTS.DNS_CLEAR_QUERIES, { method: 'POST' })
@@ -193,7 +193,7 @@ export async function apiClearDnsQueries() {
 // ───────────────────────────────────────────────────────────────────
 
 export async function apiGetDevices() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockDevices()
   }
   try {
@@ -204,7 +204,7 @@ export async function apiGetDevices() {
 }
 
 export async function apiBlockDevice(mac, blocked) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 300))
     showToast(blocked ? `Device ${mac} blocked (Simulated)` : `Device ${mac} allowed (Simulated)`, 'info')
     return blockMockDevice(mac, blocked)
@@ -218,7 +218,7 @@ export async function apiBlockDevice(mac, blocked) {
 }
 
 export async function apiSetDeviceWaiver(mac, minutes) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 300))
     showToast(`Access waiver granted for ${minutes} min (Simulated)`, 'success')
     return setMockDeviceWaiver(mac, minutes)
@@ -235,7 +235,7 @@ export async function apiSetDeviceWaiver(mac, minutes) {
 // ───────────────────────────────────────────────────────────────────
 
 export async function apiGetGuestLimits() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockGuestLimits()
   }
   try {
@@ -246,7 +246,7 @@ export async function apiGetGuestLimits() {
 }
 
 export async function apiSetGuestLimits(limits) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 400))
     showToast('Guest curfew schedule saved (Simulated)', 'success')
     return setMockGuestLimits(limits)
@@ -259,7 +259,7 @@ export async function apiSetGuestLimits(limits) {
 }
 
 export async function apiSetGuestQuota(dailyQuotaMB, hourlyQuotaMB) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 400))
     showToast('Bandwidth quotas saved (Simulated)', 'success')
     return setMockGuestQuota(dailyQuotaMB, hourlyQuotaMB)
@@ -276,7 +276,7 @@ export async function apiSetGuestQuota(dailyQuotaMB, hourlyQuotaMB) {
 // ───────────────────────────────────────────────────────────────────
 
 export async function apiFetchGuestAnalytics() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockGuestAnalytics()
   }
   try {
@@ -288,7 +288,7 @@ export async function apiFetchGuestAnalytics() {
 }
 
 export async function apiDeleteGuestAnalytics(mac) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     showToast(`Deleted history for ${mac}`, 'success')
     return deleteMockGuestAnalytics(mac)
   }
@@ -300,7 +300,7 @@ export async function apiDeleteGuestAnalytics(mac) {
 }
 
 export async function apiClearGuestUsage() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     showToast('Reset today\'s usage counters (Simulated)', 'success')
     return clearMockGuestUsage()
   }
@@ -310,7 +310,7 @@ export async function apiClearGuestUsage() {
 }
 
 export async function apiRebootRouter(isSystemOnly = false) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     showToast('Router reboot initiated (Simulated)', 'success')
     return mockRouterReboot()
   }
@@ -319,7 +319,7 @@ export async function apiRebootRouter(isSystemOnly = false) {
 }
 
 export async function apiToggleWifi(on) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     showToast(`WiFi Radio turned ${on ? 'ON' : 'OFF'} (Simulated)`, 'success')
     return mockRouterWifiToggle(on)
   }
@@ -329,7 +329,7 @@ export async function apiToggleWifi(on) {
 }
 
 export async function apiToggleSsid(ssidIdx = 1, enable = true) {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     showToast(`SSID #${ssidIdx} turned ${enable ? 'ON' : 'OFF'} (Simulated)`, 'success')
     return mockRouterSsidToggle(ssidIdx, enable)
   }
@@ -339,7 +339,7 @@ export async function apiToggleSsid(ssidIdx = 1, enable = true) {
 }
 
 export async function apiFetchSession() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockSession()
   }
   try {
@@ -350,7 +350,7 @@ export async function apiFetchSession() {
 }
 
 export async function apiFetchLastLog() {
-  if (isSimulationMode) {
+  if (import.meta.env.DEV && isSimulationMode) {
     return getMockLastLog()
   }
   try {

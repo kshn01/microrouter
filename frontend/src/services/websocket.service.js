@@ -13,7 +13,9 @@ let stopMockStream = null
 let telemetrySubscriber = null
 let connectionStateSubscriber = null
 
-let isSimulated = localStorage.getItem(STORAGE_KEYS.SIMULATION_ENABLED) === 'true'
+// Manual simulation flag (only persisted when the user explicitly clicks the toggle)
+let isManualSimulation = localStorage.getItem(STORAGE_KEYS.SIMULATION_ENABLED) === 'true'
+let isCurrentlySimulated = isManualSimulation
 
 /**
  * Initialize the connection subsystem
@@ -24,8 +26,8 @@ export function initTelemetryConnection(onTelemetryData, onConnectionChange) {
   telemetrySubscriber = onTelemetryData
   connectionStateSubscriber = onConnectionChange
 
-  if (isSimulated) {
-    activateSimulationMode('Manual Simulation Mode enabled')
+  if (isManualSimulation) {
+    activateSimulationMode('Manual Simulation Mode enabled', true)
   } else {
     connectLiveWebSocket()
   }
@@ -35,9 +37,11 @@ export function initTelemetryConnection(onTelemetryData, onConnectionChange) {
  * Attempt connection to the real ESP32 WebSocket server
  */
 function connectLiveWebSocket() {
-  if (stopMockStream) {
-    stopMockStream()
-    stopMockStream = null
+  if (isManualSimulation) return
+
+  if (socket) {
+    try { socket.close() } catch {}
+    socket = null
   }
 
   const isHttps = location.protocol === 'https:'
@@ -53,9 +57,14 @@ function connectLiveWebSocket() {
   }
 
   socket.onopen = () => {
-    isSimulated = false
+    isCurrentlySimulated = false
     setApiSimulationMode(false)
     localStorage.setItem(STORAGE_KEYS.SIMULATION_ENABLED, 'false')
+
+    if (stopMockStream) {
+      stopMockStream()
+      stopMockStream = null
+    }
 
     if (connectionStateSubscriber) {
       connectionStateSubscriber({ isConnected: true, isSimulated: false })
@@ -75,7 +84,6 @@ function connectLiveWebSocket() {
   }
 
   socket.onerror = () => {
-    // If not already in simulation, activate simulation fallback
     handleLiveConnectionFailure()
   }
 
@@ -85,34 +93,56 @@ function connectLiveWebSocket() {
 }
 
 /**
- * Handle live connection failure by activating the mock simulation
+ * Handle live connection failure by activating fallback mock simulation
+ * without permanently locking the user into simulation mode.
  */
 function handleLiveConnectionFailure() {
+  if (isManualSimulation) return
+
+  if (import.meta.env.DEV) {
+    isCurrentlySimulated = true
+    setApiSimulationMode(true)
+  }
+
   if (connectionStateSubscriber) {
-    connectionStateSubscriber({ isConnected: false, isSimulated: true })
+    connectionStateSubscriber({ 
+      isConnected: false, 
+      isSimulated: import.meta.env.DEV ? true : false 
+    })
   }
 
-  if (!stopMockStream) {
-    activateSimulationMode('ESP32 not detected. Switched to Simulation Mode for offline testing.')
+  if (!stopMockStream && import.meta.env.DEV) {
+    stopMockStream = startMockTelemetryStream((data) => {
+      if (telemetrySubscriber) {
+        telemetrySubscriber(data)
+      }
+    })
   }
 
-  // Attempt reconnect to hardware periodically in the background
+  // Periodically retry connecting to live hardware in the background
   clearTimeout(reconnectTimer)
   reconnectTimer = setTimeout(() => {
-    if (!isSimulated) {
+    if (!isManualSimulation) {
       connectLiveWebSocket()
     }
-  }, TIMING.WS_RECONNECT_INTERVAL_MS * 3)
+  }, TIMING.WS_RECONNECT_INTERVAL_MS)
 }
 
 /**
  * Activate the realistic telemetry simulation engine
  * @param {string} [noticeMessage]
+ * @param {boolean} [isManual]
  */
-export function activateSimulationMode(noticeMessage) {
-  isSimulated = true
+export function activateSimulationMode(noticeMessage, isManual = false) {
+  if (!import.meta.env.DEV) return
+
+  isCurrentlySimulated = true
   setApiSimulationMode(true)
-  localStorage.setItem(STORAGE_KEYS.SIMULATION_ENABLED, 'true')
+
+  if (isManual) {
+    isManualSimulation = true
+    localStorage.setItem(STORAGE_KEYS.SIMULATION_ENABLED, 'true')
+  }
 
   if (socket) {
     try { socket.close() } catch {}
@@ -123,7 +153,7 @@ export function activateSimulationMode(noticeMessage) {
     connectionStateSubscriber({ isConnected: true, isSimulated: true })
   }
 
-  if (!stopMockStream) {
+  if (!stopMockStream && import.meta.env.DEV) {
     stopMockStream = startMockTelemetryStream((data) => {
       if (telemetrySubscriber) {
         telemetrySubscriber(data)
@@ -140,13 +170,28 @@ export function activateSimulationMode(noticeMessage) {
  * Toggle simulation mode on/off from the UI
  */
 export function toggleSimulationMode() {
-  if (isSimulated) {
-    isSimulated = false
+  clearTimeout(reconnectTimer)
+
+  if (isCurrentlySimulated || isManualSimulation) {
+    // User wants Live Mode
+    isManualSimulation = false
+    isCurrentlySimulated = false
     localStorage.setItem(STORAGE_KEYS.SIMULATION_ENABLED, 'false')
-    showToast('Attempting to connect to live ESP32...', 'info')
+
+    if (stopMockStream) {
+      stopMockStream()
+      stopMockStream = null
+    }
+
+    if (connectionStateSubscriber) {
+      connectionStateSubscriber({ isConnected: false, isSimulated: false })
+    }
+
+    showToast('Connecting to live ESP32...', 'info')
     connectLiveWebSocket()
   } else {
-    activateSimulationMode('Simulation Mode enabled')
+    // User wants Simulation Mode
+    activateSimulationMode('Simulation Mode enabled', true)
   }
 }
 

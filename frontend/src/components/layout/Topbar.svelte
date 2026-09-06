@@ -46,6 +46,7 @@
     </div>
 
     <!-- Toggle Simulation Button (Dev Tool) -->
+    {#if import.meta.env.DEV}
     <button
       onclick={toggleSimulation}
       class="px-3 py-1.5 rounded-xl text-xs font-medium border border-white/10 hover:border-white/20 transition-all flex items-center gap-1.5 {$connectionState.isSimulated ? 'bg-amber-500/10 text-amber-300' : 'bg-white/5 text-slate-300'}"
@@ -54,6 +55,7 @@
       <Cpu class="w-3.5 h-3.5" />
       <span class="hidden md:inline">{$connectionState.isSimulated ? 'Mock Active' : 'Live Mode'}</span>
     </button>
+    {/if}
 
     <!-- Quick Reboot Action -->
     <button
