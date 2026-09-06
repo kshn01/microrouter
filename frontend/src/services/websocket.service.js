@@ -13,9 +13,15 @@ let stopMockStream = null
 let telemetrySubscriber = null
 let connectionStateSubscriber = null
 
-// Manual simulation flag (only persisted when the user explicitly clicks the toggle)
-let isManualSimulation = localStorage.getItem(STORAGE_KEYS.SIMULATION_ENABLED) === 'true'
+// Manual simulation flag (ONLY available in DEV mode)
+let isManualSimulation = Boolean(import.meta.env.DEV && localStorage.getItem(STORAGE_KEYS.SIMULATION_ENABLED) === 'true')
 let isCurrentlySimulated = isManualSimulation
+
+if (!import.meta.env.DEV) {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.SIMULATION_ENABLED)
+  } catch {}
+}
 
 /**
  * Initialize the connection subsystem
@@ -26,7 +32,7 @@ export function initTelemetryConnection(onTelemetryData, onConnectionChange) {
   telemetrySubscriber = onTelemetryData
   connectionStateSubscriber = onConnectionChange
 
-  if (isManualSimulation) {
+  if (import.meta.env.DEV && isManualSimulation) {
     activateSimulationMode('Manual Simulation Mode enabled', true)
   } else {
     connectLiveWebSocket()
@@ -37,7 +43,7 @@ export function initTelemetryConnection(onTelemetryData, onConnectionChange) {
  * Attempt connection to the real ESP32 WebSocket server
  */
 function connectLiveWebSocket() {
-  if (isManualSimulation) return
+  if (import.meta.env.DEV && isManualSimulation) return
 
   if (socket) {
     try { socket.close() } catch {}

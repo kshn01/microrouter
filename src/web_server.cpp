@@ -66,10 +66,10 @@ void WebServer::loop() {
 // ── Static Files ─────────────────────────────────────────────────
 
 void WebServer::_setupStaticFiles() {
-    // Serve the SPA from LittleFS
+    // Serve the SPA from LittleFS (no-cache ensures new deployments load immediately)
     _server.serveStatic("/", LittleFS, "/")
            .setDefaultFile("index.html")
-           .setCacheControl("max-age=86400");
+           .setCacheControl("no-cache");
 
     // Fallback: serve index.html for SPA routes (hash-based routing
     // doesn't need this, but just in case)
