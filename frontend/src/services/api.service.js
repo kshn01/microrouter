@@ -1,0 +1,118 @@
+// ═══════════════════════════════════════════════════════════════════
+// MicroRouter REST API Service Layer
+// ═══════════════════════════════════════════════════════════════════
+
+import { API_ENDPOINTS, TIMING } from '../config/constants.js'
+import { getMockSystemInfo, getMockWifiNetworks } from './mock.service.js'
+import { showToast } from './toast.service.js'
+
+let isSimulationMode = false
+
+export function setApiSimulationMode(enabled) {
+  isSimulationMode = enabled
+}
+
+/**
+ * Perform a fetch request with an automatic abort timeout
+ * @param {string} url
+ * @param {RequestInit} [options]
+ * @returns {Promise<any>}
+ */
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), TIMING.REQUEST_TIMEOUT_MS)
+
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal })
+    clearTimeout(timeoutId)
+    if (!res.ok) {
+      throw new Error(`HTTP Error ${res.status}: ${res.statusText}`)
+    }
+    return await res.json()
+  } catch (err) {
+    clearTimeout(timeoutId)
+    throw err
+  }
+}
+
+/**
+ * Fetch system diagnostic information
+ */
+export async function apiFetchSystemInfo() {
+  if (isSimulationMode) {
+    return getMockSystemInfo()
+  }
+
+  try {
+    return await fetchWithTimeout(API_ENDPOINTS.SYSTEM_INFO)
+  } catch (err) {
+    console.warn('[API] System info request failed, returning mock data:', err.message)
+    return getMockSystemInfo()
+  }
+}
+
+/**
+ * Trigger an asynchronous WiFi network scan
+ */
+export async function apiScanWiFiNetworks() {
+  if (isSimulationMode) {
+    // Artificial delay to simulate real scanning
+    await new Promise((r) => setTimeout(r, 1200))
+    return { networks: getMockWifiNetworks() }
+  }
+
+  try {
+    return await fetchWithTimeout(API_ENDPOINTS.WIFI_SCAN)
+  } catch (err) {
+    console.warn('[API] WiFi scan failed, returning mock networks:', err.message)
+    return { networks: getMockWifiNetworks() }
+  }
+}
+
+/**
+ * Connect to a WiFi network
+ * @param {string} ssid
+ * @param {string} password
+ */
+export async function apiConnectWiFi(ssid, password) {
+  if (isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 800))
+    showToast(`Connected to "${ssid}" in Simulation Mode`, 'success')
+    return { status: 'connecting', ssid }
+  }
+
+  return await fetchWithTimeout(API_ENDPOINTS.WIFI_CONNECT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ssid, password }),
+  })
+}
+
+/**
+ * Clear stored WiFi credentials (reset to AP mode)
+ */
+export async function apiDisconnectWiFi() {
+  if (isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 600))
+    showToast('Reset to AP mode in Simulation Mode', 'warning')
+    return { status: 'disconnected' }
+  }
+
+  return await fetchWithTimeout(API_ENDPOINTS.WIFI_DISCONNECT, { method: 'POST' })
+}
+
+/**
+ * Restart the ESP32 micro-controller
+ */
+export async function apiRestartSystem() {
+  if (isSimulationMode) {
+    showToast('Restart signal simulated', 'info')
+    return { status: 'ok' }
+  }
+
+  try {
+    await fetch(API_ENDPOINTS.SYSTEM_RESTART, { method: 'POST' })
+  } catch {
+    // Restarting drops connection, so errors are expected
+  }
+}
