@@ -43,6 +43,23 @@ private:
     void _handleWiFiDisconnect(AsyncWebServerRequest* request);
     void _handleNotFound(AsyncWebServerRequest* request);
 
+    // ── DNS Shield Handlers ──────────────────────────────────────
+    void _handleDnsGet(AsyncWebServerRequest* request);
+    void _handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleDnsQueries(AsyncWebServerRequest* request);
+    void _handleDnsQueriesClear(AsyncWebServerRequest* request);
+
+    // ── Device Management Handlers ───────────────────────────────
+    void _handleDevices(AsyncWebServerRequest* request);
+    void _handleDeviceBlock(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleDeviceAllow(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleDeviceWaiver(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+
+    // ── Curfew & Quota Handlers ──────────────────────────────────
+    void _handleCurfewGet(AsyncWebServerRequest* request);
+    void _handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+
     // ── WebSocket ────────────────────────────────────────────────
     void _onWsEvent(AsyncWebSocket* ws, AsyncWebSocketClient* client,
                     AwsEventType type, void* arg, uint8_t* data, size_t len);

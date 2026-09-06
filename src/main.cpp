@@ -10,11 +10,16 @@
 #include "wifi_manager.h"
 #include "ota_manager.h"
 #include "web_server.h"
+#include "dns_engine.h"
+#include "scheduler.h"
+#include "device_manager.h"
+#include "router_client.h"
 
 // ── Global Instances ─────────────────────────────────────────────
-WiFiManager wifiManager;
-OTAManager  otaManager;
-WebServer   webServer;
+WiFiManager         wifiManager;
+OTAManager          otaManager;
+WebServer           webServer;
+GenericRouterClient routerClient;
 
 // ══════════════════════════════════════════════════════════════════
 //  SETUP
@@ -64,6 +69,13 @@ void setup() {
     Serial.println("[Boot] Starting OTA...");
     otaManager.begin(webServer.getServer());
 
+    // ── Subsystems: Scheduler, DeviceMgr, DNS Shield ───────────
+    Serial.println("[Boot] Starting subsystems...");
+    scheduler.begin();
+    deviceManager.begin();
+    dnsEngine.begin();
+    routerClient.begin();
+
     // ── Boot Complete ────────────────────────────────────────────
     Serial.println();
     Serial.println("╔══════════════════════════════════════════════╗");
@@ -88,4 +100,7 @@ void loop() {
     wifiManager.loop();     // Handle WiFi reconnection & DNS
     otaManager.loop();      // Handle OTA updates & boot validation
     webServer.loop();       // Handle WebSocket broadcasts & cleanup
+    scheduler.loop();       // Handle NTP & temporal waivers
+    deviceManager.loop();   // Handle NetBIOS round-robin resolution
+    routerClient.loop();    // Handle gateway sync
 }

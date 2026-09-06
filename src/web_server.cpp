@@ -1,4 +1,7 @@
 #include "web_server.h"
+#include "dns_engine.h"
+#include "scheduler.h"
+#include "device_manager.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <esp_system.h>
@@ -146,6 +149,15 @@ String WebServer::_buildStatsJson() {
     data["bootCount"]     = _otaMgr->getBootCount();
     data["wsClients"]     = _ws.count();
 
+    // DNS Shield Telemetry
+    DnsStatsSnapshot dnsSnap;
+    dnsEngine.getStats(&dnsSnap);
+    data["dnsTotal"]      = dnsSnap.totalQueries;
+    data["dnsBlocked"]    = dnsSnap.queriesBlocked;
+    data["dnsProfile"]    = dnsSnap.profileKey;
+    data["curfewActive"]  = scheduler.isCurfewActive();
+    data["connectedDevices"] = deviceManager.getConnectedCount();
+
     // PSRAM info (ESP32-S3 often has PSRAM)
     if (ESP.getPsramSize() > 0) {
         data["psramSize"]   = ESP.getPsramSize();
@@ -187,6 +199,66 @@ void WebServer::_setupApiRoutes() {
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len,
                size_t index, size_t total) {
             _handleWiFiConnect(req, data, len);
+        });
+
+    // ── DNS Shield Endpoints ─────────────────────────────────────
+    _server.on("/api/dns/get", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleDnsGet(req); });
+
+    _server.on("/api/dns/queries", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleDnsQueries(req); });
+
+    _server.on("/api/dns/queries/clear", HTTP_POST,
+        [this](AsyncWebServerRequest* req) { _handleDnsQueriesClear(req); });
+
+    _server.on("/api/dns/set", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleDnsSet(req, data, len);
+        });
+
+    // ── Device Management Endpoints ──────────────────────────────
+    _server.on("/api/devices", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleDevices(req); });
+
+    _server.on("/api/device/block", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleDeviceBlock(req, data, len);
+        });
+
+    _server.on("/api/device/allow", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleDeviceAllow(req, data, len);
+        });
+
+    _server.on("/api/device/waiver", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleDeviceWaiver(req, data, len);
+        });
+
+    // ── Curfew & Quota Endpoints ─────────────────────────────────
+    _server.on("/api/guest/limit/get", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCurfewGet(req); });
+
+    _server.on("/api/guest/limit/set", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleCurfewSet(req, data, len);
+        });
+
+    _server.on("/api/guest/quota/set", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleQuotaSet(req, data, len);
         });
 
     Serial.println("[Web] API routes configured");
@@ -316,6 +388,168 @@ void WebServer::_handleWiFiDisconnect(AsyncWebServerRequest* request) {
 
     _rebootPending = true;
     _rebootAt = millis() + 1000;  // Restart in AP mode after response delivers
+}
+
+// ── DNS Shield Handlers ──────────────────────────────────────────
+
+void WebServer::_handleDnsGet(AsyncWebServerRequest* request) {
+    JsonDocument doc;
+    DnsStatsSnapshot snap;
+    dnsEngine.getStats(&snap);
+    doc["profile"]      = snap.profileKey;
+    doc["profileName"]  = snap.profileName;
+    doc["primaryIp"]    = snap.upstreamPrimary;
+    doc["secondaryIp"]  = snap.upstreamSecondary;
+    doc["totalQueries"] = snap.totalQueries;
+    doc["answered"]     = snap.queriesAnswered;
+    doc["forwarded"]    = snap.queriesForwarded;
+    doc["blocked"]      = snap.queriesBlocked;
+    doc["local"]        = snap.localInterceptCount;
+    doc["avgLatencyMs"] = snap.avgLatencyMs;
+
+    DnsShieldRules rules;
+    dnsEngine.getShieldRules(&rules);
+    doc["blockMeta"]    = rules.blockMeta;
+    doc["blockTiktok"]  = rules.blockTiktok;
+    doc["customDomains"]= rules.customDomains;
+
+    String out;
+    serializeJson(doc, out);
+    request->send(200, "application/json", out);
+}
+
+void WebServer::_handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+        request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
+    if (doc["profile"].is<const char*>()) {
+        dnsEngine.setProfile(doc["profile"].as<String>());
+    }
+    if (doc["customPrimary"].is<const char*>()) {
+        dnsEngine.setCustomUpstreams(doc["customPrimary"].as<String>(),
+                                     doc["customSecondary"] | "0.0.0.0");
+    }
+    if (doc["blockMeta"].is<bool>() || doc["blockTiktok"].is<bool>() || doc["customDomains"].is<const char*>()) {
+        DnsShieldRules cur;
+        dnsEngine.getShieldRules(&cur);
+        bool bm = doc["blockMeta"].is<bool>() ? doc["blockMeta"].as<bool>() : cur.blockMeta;
+        bool bt = doc["blockTiktok"].is<bool>() ? doc["blockTiktok"].as<bool>() : cur.blockTiktok;
+        String cd = doc["customDomains"].is<const char*>() ? doc["customDomains"].as<String>() : String(cur.customDomains);
+        dnsEngine.setShieldRules(bm, bt, cd);
+    }
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void WebServer::_handleDnsQueries(AsyncWebServerRequest* request) {
+    request->send(200, "application/json", dnsEngine.getRecentQueriesJson());
+}
+
+void WebServer::_handleDnsQueriesClear(AsyncWebServerRequest* request) {
+    dnsEngine.clearQueryLog();
+    request->send(200, "application/json", "{\"status\":\"cleared\"}");
+}
+
+// ── Device Management Handlers ───────────────────────────────────
+
+void WebServer::_handleDevices(AsyncWebServerRequest* request) {
+    request->send(200, "application/json", deviceManager.getDevicesJson());
+}
+
+void WebServer::_handleDeviceBlock(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+        String mac = doc["mac"].as<String>();
+        deviceManager.setBlocked(mac, true);
+        request->send(200, "application/json", "{\"status\":\"blocked\",\"mac\":\"" + mac + "\"}");
+        return;
+    }
+    request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+}
+
+void WebServer::_handleDeviceAllow(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+        String mac = doc["mac"].as<String>();
+        deviceManager.setBlocked(mac, false);
+        scheduler.revokeWaiver(mac);
+        request->send(200, "application/json", "{\"status\":\"allowed\",\"mac\":\"" + mac + "\"}");
+        return;
+    }
+    request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+}
+
+void WebServer::_handleDeviceWaiver(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+        String mac = doc["mac"].as<String>();
+        uint32_t secs = doc["durationSecs"] | 1800; // default 30 mins
+        scheduler.grantWaiver(mac, secs);
+        request->send(200, "application/json",
+                      "{\"status\":\"waiver_granted\",\"mac\":\"" + mac +
+                      "\",\"durationSecs\":" + String(secs) + "}");
+        return;
+    }
+    request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+}
+
+// ── Curfew & Quota Handlers ──────────────────────────────────────
+
+void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
+    JsonDocument doc;
+    CurfewSchedule cs;
+    scheduler.getCurfew(&cs);
+    doc["enabled"]   = cs.enabled;
+    doc["startHour"] = cs.startHour;
+    doc["startMin"]  = cs.startMin;
+    doc["endHour"]   = cs.endHour;
+    doc["endMin"]    = cs.endMin;
+    doc["activeNow"] = scheduler.isCurfewActive();
+    doc["timeStr"]   = scheduler.getFormattedTime();
+
+    QuotaLimits q;
+    scheduler.getQuotas(&q);
+    doc["hourlyEnabled"]   = q.hourlyEnabled;
+    doc["hourlyLimitMb"]   = (uint32_t)(q.hourlyLimitBytes / (1024 * 1024));
+    doc["dailyEnabled"]    = q.dailyEnabled;
+    doc["dailyLimitMb"]    = (uint32_t)(q.dailyLimitBytes / (1024 * 1024));
+    doc["timeEnabled"]     = q.timeEnabled;
+    doc["dailyActiveMins"] = q.dailyActiveSecs / 60;
+
+    String out;
+    serializeJson(doc, out);
+    request->send(200, "application/json", out);
+}
+
+void WebServer::_handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+        bool en = doc["enabled"] | false;
+        int sH = doc["startHour"] | 23;
+        int sM = doc["startMin"] | 0;
+        int eH = doc["endHour"] | 6;
+        int eM = doc["endMin"] | 0;
+        scheduler.setCurfew(en, sH, sM, eH, eM);
+        request->send(200, "application/json", "{\"status\":\"ok\"}");
+        return;
+    }
+    request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+}
+
+void WebServer::_handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+        uint64_t hMb = doc["hourlyLimitMb"] | 500;
+        uint64_t dMb = doc["dailyLimitMb"] | 2048;
+        uint32_t tm  = (doc["dailyActiveMins"] | 60) * 60;
+        scheduler.setQuotas(doc["hourlyEnabled"] | false, hMb * 1024 * 1024ULL,
+                            doc["dailyEnabled"] | false, dMb * 1024 * 1024ULL,
+                            doc["timeEnabled"] | false, tm);
+        request->send(200, "application/json", "{\"status\":\"ok\"}");
+        return;
+    }
+    request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
 }
 
 // ── 404 Handler ──────────────────────────────────────────────────
