@@ -1,0 +1,19 @@
+# MicroRouter Partition Table — Dual OTA + LittleFS
+# Total flash: 8MB (0x800000) — ESP32-S3-DevKitC-1 default
+#
+# Layout:
+#   nvs      — Non-volatile storage (WiFi creds, config)
+#   otadata  — OTA boot selection data
+#   ota_0    — Primary application partition (3MB)
+#   ota_1    — Secondary application partition (3MB, for safe OTA)
+#   littlefs — Web frontend + config files (~2MB)
+#
+# NOTE: If your board has 16MB flash, you can increase ota_0/ota_1
+#       to 0x500000 (5MB each) and littlefs to 0x3F0000 (~4MB).
+#
+# Name,     Type, SubType,  Offset,    Size,     Flags
+nvs,        data, nvs,      0x9000,    0x5000,
+otadata,    data, ota,      0xE000,    0x2000,
+ota_0,      app,  ota_0,    0x10000,   0x300000,
+ota_1,      app,  ota_1,    0x310000,  0x300000,
+littlefs,   data, spiffs,   0x610000,  0x1F0000,
