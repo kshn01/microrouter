@@ -6,8 +6,8 @@ ZteRouterClient zteClient;
 
 ZteRouterClient::ZteRouterClient() {
     _routerIp = ROUTER_GATEWAY_IP;
-    _routerUser = "admin";
-    _routerPass = "admin";
+    _routerUser = ROUTER_GATEWAY_USER;
+    _routerPass = ROUTER_GATEWAY_PASS;
 }
 
 ZteRouterClient::~ZteRouterClient() {

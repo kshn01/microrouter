@@ -73,6 +73,18 @@
   #define ROUTER_GATEWAY_IP         "192.168.1.1"
 #endif
 
+#ifdef SECRET_ROUTER_USER
+  #define ROUTER_GATEWAY_USER       SECRET_ROUTER_USER
+#else
+  #define ROUTER_GATEWAY_USER       "admin"
+#endif
+
+#ifdef SECRET_ROUTER_PASS
+  #define ROUTER_GATEWAY_PASS       SECRET_ROUTER_PASS
+#else
+  #define ROUTER_GATEWAY_PASS       "admin"
+#endif
+
 // ── NVS Namespace Keys ───────────────────────────────────────────
 #define NVS_NAMESPACE               "microrouter"
 #define NVS_KEY_SSID                "wifi_ssid"
