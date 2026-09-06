@@ -321,6 +321,133 @@ export function setMockGuestQuota(dailyMB, hourlyMB) {
   return { status: 'ok', dailyMB, hourlyMB }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Mock 7-Day Guest Analytics & Router Parity Handlers
+// ═══════════════════════════════════════════════════════════════════
+
+let mockGuestAnalyticsRecords = [
+  {
+    mac: '3c:15:c2:44:9a:12',
+    hostname: 'MacBook-Pro',
+    ip: '192.168.1.101',
+    currentlyOnline: true,
+    todayUsageBytes: 524288000, // ~500 MB
+    todayActiveSecs: 14400,
+    validDaysCount: 7,
+    history: [
+      { dayIndex: 1, epochDay: 20600, bytesUsed: 1048576000, activeSecs: 21600, quotaBlockCount: 0 },
+      { dayIndex: 2, epochDay: 20599, bytesUsed: 838860800, activeSecs: 18000, quotaBlockCount: 0 },
+      { dayIndex: 3, epochDay: 20598, bytesUsed: 1258291200, activeSecs: 25200, quotaBlockCount: 1 },
+      { dayIndex: 4, epochDay: 20597, bytesUsed: 629145600, activeSecs: 14400, quotaBlockCount: 0 },
+      { dayIndex: 5, epochDay: 20596, bytesUsed: 943718400, activeSecs: 19800, quotaBlockCount: 0 },
+      { dayIndex: 6, epochDay: 20595, bytesUsed: 419430400, activeSecs: 10800, quotaBlockCount: 0 },
+      { dayIndex: 7, epochDay: 20594, bytesUsed: 734003200, activeSecs: 16200, quotaBlockCount: 0 }
+    ]
+  },
+  {
+    mac: 'bc:d1:d3:88:21:40',
+    hostname: 'Galaxy-S23',
+    ip: '192.168.1.102',
+    currentlyOnline: true,
+    todayUsageBytes: 262144000, // ~250 MB
+    todayActiveSecs: 10800,
+    validDaysCount: 7,
+    history: [
+      { dayIndex: 1, epochDay: 20600, bytesUsed: 419430400, activeSecs: 12000, quotaBlockCount: 0 },
+      { dayIndex: 2, epochDay: 20599, bytesUsed: 524288000, activeSecs: 14000, quotaBlockCount: 0 },
+      { dayIndex: 3, epochDay: 20598, bytesUsed: 314572800, activeSecs: 9000, quotaBlockCount: 0 },
+      { dayIndex: 4, epochDay: 20597, bytesUsed: 471859200, activeSecs: 13500, quotaBlockCount: 0 },
+      { dayIndex: 5, epochDay: 20596, bytesUsed: 209715200, activeSecs: 7200, quotaBlockCount: 0 },
+      { dayIndex: 6, epochDay: 20595, bytesUsed: 367001600, activeSecs: 11000, quotaBlockCount: 0 },
+      { dayIndex: 7, epochDay: 20594, bytesUsed: 262144000, activeSecs: 8500, quotaBlockCount: 0 }
+    ]
+  },
+  {
+    mac: '98:b6:e9:11:ff:02',
+    hostname: 'Nintendo-Switch',
+    ip: '192.168.1.103',
+    currentlyOnline: false,
+    todayUsageBytes: 1572864000, // ~1.5 GB
+    todayActiveSecs: 18000,
+    validDaysCount: 7,
+    history: [
+      { dayIndex: 1, epochDay: 20600, bytesUsed: 2097152000, activeSecs: 21600, quotaBlockCount: 2 },
+      { dayIndex: 2, epochDay: 20599, bytesUsed: 1887436800, activeSecs: 19800, quotaBlockCount: 1 },
+      { dayIndex: 3, epochDay: 20598, bytesUsed: 2411724800, activeSecs: 25000, quotaBlockCount: 2 },
+      { dayIndex: 4, epochDay: 20597, bytesUsed: 1258291200, activeSecs: 15000, quotaBlockCount: 0 },
+      { dayIndex: 5, epochDay: 20596, bytesUsed: 1677721600, activeSecs: 18000, quotaBlockCount: 1 },
+      { dayIndex: 6, epochDay: 20595, bytesUsed: 838860800, activeSecs: 10000, quotaBlockCount: 0 },
+      { dayIndex: 7, epochDay: 20594, bytesUsed: 1468006400, activeSecs: 16000, quotaBlockCount: 1 }
+    ]
+  },
+  {
+    mac: '00:fc:8b:2e:55:18',
+    hostname: 'FireTV-Stick-4K',
+    ip: '192.168.1.104',
+    currentlyOnline: true,
+    todayUsageBytes: 3145728000, // ~3.0 GB
+    todayActiveSecs: 21600,
+    validDaysCount: 7,
+    history: [
+      { dayIndex: 1, epochDay: 20600, bytesUsed: 4194304000, activeSecs: 28800, quotaBlockCount: 0 },
+      { dayIndex: 2, epochDay: 20599, bytesUsed: 3670016000, activeSecs: 25200, quotaBlockCount: 0 },
+      { dayIndex: 3, epochDay: 20598, bytesUsed: 4718592000, activeSecs: 32400, quotaBlockCount: 0 },
+      { dayIndex: 4, epochDay: 20597, bytesUsed: 3145728000, activeSecs: 21600, quotaBlockCount: 0 },
+      { dayIndex: 5, epochDay: 20596, bytesUsed: 5242880000, activeSecs: 36000, quotaBlockCount: 0 },
+      { dayIndex: 6, epochDay: 20595, bytesUsed: 2621440000, activeSecs: 18000, quotaBlockCount: 0 },
+      { dayIndex: 7, epochDay: 20594, bytesUsed: 3984588800, activeSecs: 27000, quotaBlockCount: 0 }
+    ]
+  }
+]
+
+export function getMockGuestAnalytics() {
+  return { records: [...mockGuestAnalyticsRecords] }
+}
+
+export function deleteMockGuestAnalytics(mac) {
+  mockGuestAnalyticsRecords = mockGuestAnalyticsRecords.filter(
+    (r) => r.mac.toLowerCase() !== mac.toLowerCase()
+  )
+  return { ok: true }
+}
+
+export function clearMockGuestUsage() {
+  mockGuestAnalyticsRecords.forEach((r) => {
+    r.todayUsageBytes = 0
+    r.todayActiveSecs = 0
+  })
+  return { ok: true }
+}
+
+export function getMockSession() {
+  return {
+    sid: 'SIM_SID_998822',
+    token: 'SIM_TOKEN_ABCD',
+    wifi: '1',
+    guest: true,
+    guestSsid: 'MicroRouter-Guest',
+    ip: '192.168.1.150',
+    loggedIn: true,
+    gatewayType: 'ZTE GPON F670L (Simulated)'
+  }
+}
+
+export function mockRouterReboot() {
+  return { ok: true }
+}
+
+export function mockRouterWifiToggle(on) {
+  return { ok: true, state: on ? '1' : '0' }
+}
+
+export function mockRouterSsidToggle(idx, enable) {
+  return { ok: true }
+}
+
+export function getMockLastLog() {
+  return '[ZTE] devmgr_statusmgr_lua.lua OK 0\n[System] Web Server active\n[WiFi] Radio state: 1'
+}
+
 /**
  * Start simulated telemetry streaming to a listener callback
  */

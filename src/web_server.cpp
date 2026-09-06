@@ -2,6 +2,8 @@
 #include "dns_engine.h"
 #include "scheduler.h"
 #include "device_manager.h"
+#include "router_client.h"
+#include "zte_client.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <esp_system.h>
@@ -260,6 +262,61 @@ void WebServer::_setupApiRoutes() {
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
             _handleQuotaSet(req, data, len);
         });
+
+    // ── Gateway & Router Parity Endpoints ────────────────────────
+    _server.on("/api/reboot", HTTP_POST,
+        [this](AsyncWebServerRequest* req) { _handleRouterReboot(req); });
+
+    _server.on("/api/wifi/toggle", HTTP_POST,
+        [this](AsyncWebServerRequest* req) {
+            _handleRouterWifiToggle(req, nullptr, 0);
+        },
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleRouterWifiToggle(req, data, len);
+        });
+
+    _server.on("/api/ssid/toggle", HTTP_POST,
+        [this](AsyncWebServerRequest* req) {
+            _handleRouterSsidToggle(req, nullptr, 0);
+        },
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleRouterSsidToggle(req, data, len);
+        });
+
+    _server.on("/api/router/dns/get", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleRouterDnsGet(req); });
+
+    _server.on("/api/router/dns/set", HTTP_POST,
+        [this](AsyncWebServerRequest* req) {
+            _handleRouterDnsSet(req, nullptr, 0);
+        },
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleRouterDnsSet(req, data, len);
+        });
+
+    _server.on("/api/guest/analytics", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleGuestAnalytics(req); });
+
+    _server.on("/api/guest/analytics/delete", HTTP_POST,
+        [this](AsyncWebServerRequest* req) {
+            _handleGuestAnalyticsDelete(req, nullptr, 0);
+        },
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleGuestAnalyticsDelete(req, data, len);
+        });
+
+    _server.on("/api/guest/quota/clear", HTTP_POST,
+        [this](AsyncWebServerRequest* req) { _handleGuestQuotaClear(req); });
+
+    _server.on("/api/lastlog", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleLastLog(req); });
+
+    _server.on("/api/session", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleSession(req); });
 
     Serial.println("[Web] API routes configured");
 }
@@ -550,6 +607,151 @@ void WebServer::_handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, s
         return;
     }
     request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+}
+
+// ── Router Gateway Parity Handlers ───────────────────────────────
+
+void WebServer::_handleRouterReboot(AsyncWebServerRequest* request) {
+    bool ok = zteClient.reboot();
+    if (!ok || request->hasParam("system")) {
+        _rebootPending = true;
+        _rebootAt = millis() + 1000;
+        ok = true;
+    }
+    request->send(200, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + "}");
+}
+
+void WebServer::_handleRouterWifiToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    bool on = true;
+    if (request->hasParam("on")) {
+        on = (request->getParam("on")->value() == "1" || request->getParam("on")->value().equalsIgnoreCase("true"));
+    } else if (request->hasParam("enable")) {
+        on = (request->getParam("enable")->value() == "1" || request->getParam("enable")->value().equalsIgnoreCase("true"));
+    } else if (data && len > 0) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+            on = doc["on"] | (doc["enable"] | true);
+        }
+    }
+    bool ok = zteClient.toggleRadio(on);
+    request->send(200, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + ",\"state\":\"" + (on ? "1" : "0") + "\"}");
+}
+
+void WebServer::_handleRouterSsidToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    int ssidIdx = 1;
+    bool enable = true;
+    if (request->hasParam("ssidIdx")) {
+        ssidIdx = request->getParam("ssidIdx")->value().toInt();
+    }
+    if (request->hasParam("enable")) {
+        enable = (request->getParam("enable")->value() == "1" || request->getParam("enable")->value().equalsIgnoreCase("true"));
+    } else if (data && len > 0) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+            ssidIdx = doc["ssidIdx"] | 1;
+            enable = doc["enable"] | true;
+        }
+    }
+    bool ok = zteClient.toggleSSID(ssidIdx, enable);
+    request->send(200, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + "}");
+}
+
+void WebServer::_handleRouterDnsGet(AsyncWebServerRequest* request) {
+    DnsStatsSnapshot stats;
+    dnsEngine.getStats(&stats);
+
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["profile"] = stats.profileKey;
+    doc["primary"] = "1.1.1.1";
+    doc["secondary"] = "1.0.0.1";
+    doc["dhcpPrimary"] = _wifiMgr->getIP();
+    doc["dhcpSecondary"] = "1.1.1.1";
+    doc["hybridDns"] = true;
+    doc["routerSynced"] = zteClient.isLoggedIn();
+
+    String out;
+    serializeJson(doc, out);
+    request->send(200, "application/json", out);
+}
+
+void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    String profile = "ultra_fast";
+    String primary = "1.1.1.1";
+    String secondary = "1.0.0.1";
+
+    if (request->hasParam("profile")) {
+        profile = request->getParam("profile")->value();
+    }
+    if (data && len > 0) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+            if (doc["profile"].is<const char*>()) profile = doc["profile"].as<String>();
+            if (doc["primary"].is<const char*>()) primary = doc["primary"].as<String>();
+            if (doc["secondary"].is<const char*>()) secondary = doc["secondary"].as<String>();
+        }
+    }
+
+    dnsEngine.setProfile(profile);
+    bool ok = zteClient.syncDns(primary, secondary);
+
+    JsonDocument resp;
+    resp["ok"] = true;
+    resp["profile"] = profile;
+    resp["primary"] = primary;
+    resp["secondary"] = secondary;
+    resp["routerSynced"] = ok;
+
+    String out;
+    serializeJson(resp, out);
+    request->send(200, "application/json", out);
+}
+
+void WebServer::_handleGuestAnalytics(AsyncWebServerRequest* request) {
+    String json = deviceManager.getGuestAnalyticsJson();
+    request->send(200, "application/json", json);
+}
+
+void WebServer::_handleGuestAnalyticsDelete(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    String mac = "";
+    if (request->hasParam("mac")) {
+        mac = request->getParam("mac")->value();
+    } else if (data && len > 0) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+            mac = doc["mac"] | "";
+        }
+    }
+    bool ok = false;
+    if (mac.length() > 0) {
+        ok = deviceManager.deleteGuestAnalyticsRecord(mac);
+    }
+    request->send(200, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + "}");
+}
+
+void WebServer::_handleGuestQuotaClear(AsyncWebServerRequest* request) {
+    deviceManager.clearGuestUsage();
+    request->send(200, "application/json", "{\"ok\":true}");
+}
+
+void WebServer::_handleLastLog(AsyncWebServerRequest* request) {
+    request->send(200, "text/plain", zteClient.getLastLog());
+}
+
+void WebServer::_handleSession(AsyncWebServerRequest* request) {
+    JsonDocument doc;
+    doc["sid"] = "active";
+    doc["token"] = "session_token";
+    doc["wifi"] = "1";
+    doc["guest"] = true;
+    doc["guestSsid"] = "MicroRouter-Guest";
+    doc["ip"] = _wifiMgr->getIP();
+    doc["loggedIn"] = zteClient.isLoggedIn();
+    doc["gatewayType"] = zteClient.getGatewayType();
+
+    String out;
+    serializeJson(doc, out);
+    request->send(200, "application/json", out);
 }
 
 // ── 404 Handler ──────────────────────────────────────────────────

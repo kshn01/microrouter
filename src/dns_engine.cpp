@@ -1,4 +1,5 @@
 #include "dns_engine.h"
+#include "device_manager.h"
 #include "config.h"
 
 #include <WiFi.h>
@@ -158,6 +159,11 @@ static void logQuery(const char* domain, const char* clientIp, uint8_t status, u
     if (s_queryLogCount < DNS_QUERY_LOG_SIZE) s_queryLogCount++;
 
     if (s_dnsMutex) xSemaphoreGive(s_dnsMutex);
+
+    // Actively register client in DeviceManager for real-time inventory
+    if (clientIp && clientIp[0] != '\0') {
+        deviceManager.registerClientActivity(clientIp, domain);
+    }
 }
 
 // ─── Zero-Heap RFC 1035 Question Parser ───────────────────────────

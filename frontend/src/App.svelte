@@ -11,6 +11,7 @@
   import WiFiView from './views/WiFiView.svelte'
   import SystemView from './views/SystemView.svelte'
   import OTAView from './views/OTAView.svelte'
+  import InsightsView from './views/InsightsView.svelte'
 
   import { initTelemetryConnection } from './services/websocket.service.js'
   import { updateTelemetry } from './stores/telemetry.store.js'
@@ -20,6 +21,7 @@
     '/': DashboardView,
     '/dns': DnsView,
     '/devices': DevicesView,
+    '/insights': InsightsView,
     '/parental': ParentalView,
     '/wifi': WiFiView,
     '/system': SystemView,

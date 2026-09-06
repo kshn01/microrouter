@@ -34,6 +34,18 @@ export const API_ENDPOINTS = {
   GUEST_LIMIT_GET: '/api/guest/limit/get',
   GUEST_LIMIT_SET: '/api/guest/limit/set',
   GUEST_QUOTA_SET: '/api/guest/quota/set',
+
+  // Analytics & Router Parity
+  GUEST_ANALYTICS: '/api/guest/analytics',
+  GUEST_ANALYTICS_DELETE: '/api/guest/analytics/delete',
+  GUEST_QUOTA_CLEAR: '/api/guest/quota/clear',
+  ROUTER_REBOOT: '/api/reboot',
+  ROUTER_WIFI_TOGGLE: '/api/wifi/toggle',
+  ROUTER_SSID_TOGGLE: '/api/ssid/toggle',
+  ROUTER_DNS_GET: '/api/router/dns/get',
+  ROUTER_DNS_SET: '/api/router/dns/set',
+  LASTLOG: '/api/lastlog',
+  SESSION: '/api/session',
 }
 
 export const TIMING = {

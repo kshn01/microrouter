@@ -14,12 +14,12 @@
 #include "scheduler.h"
 #include "device_manager.h"
 #include "router_client.h"
+#include "zte_client.h"
 
 // ── Global Instances ─────────────────────────────────────────────
 WiFiManager         wifiManager;
 OTAManager          otaManager;
 WebServer           webServer;
-GenericRouterClient routerClient;
 
 // ══════════════════════════════════════════════════════════════════
 //  SETUP
@@ -74,7 +74,7 @@ void setup() {
     scheduler.begin();
     deviceManager.begin();
     dnsEngine.begin();
-    routerClient.begin();
+    zteClient.begin();
 
     // ── Boot Complete ────────────────────────────────────────────
     Serial.println();
@@ -102,5 +102,5 @@ void loop() {
     webServer.loop();       // Handle WebSocket broadcasts & cleanup
     scheduler.loop();       // Handle NTP & temporal waivers
     deviceManager.loop();   // Handle NetBIOS round-robin resolution
-    routerClient.loop();    // Handle gateway sync
+    zteClient.loop();        // Handle gateway sync
 }

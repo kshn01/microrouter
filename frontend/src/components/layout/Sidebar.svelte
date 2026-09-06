@@ -9,6 +9,7 @@
     Shield,
     Laptop,
     Moon,
+    BarChart3,
   } from '@lucide/svelte'
   import { activePartition, wifiIp } from '../../stores/telemetry.store.js'
   import { connectionState } from '../../stores/connection.store.js'
@@ -19,6 +20,7 @@
     { href: '#/', label: 'Dashboard', icon: Activity },
     { href: '#/dns', label: 'DNS Shield', icon: Shield },
     { href: '#/devices', label: 'Devices', icon: Laptop },
+    { href: '#/insights', label: 'Guest Analytics', icon: BarChart3 },
     { href: '#/parental', label: 'Parental Controls', icon: Moon },
     { href: '#/wifi', label: 'WiFi Network', icon: Wifi },
     { href: '#/system', label: 'Diagnostics', icon: Cpu },

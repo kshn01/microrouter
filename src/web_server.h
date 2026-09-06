@@ -60,6 +60,18 @@ private:
     void _handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
     void _handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
 
+    // ── Router Gateway & Analytics Handlers ──────────────────────
+    void _handleRouterReboot(AsyncWebServerRequest* request);
+    void _handleRouterWifiToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleRouterSsidToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleRouterDnsGet(AsyncWebServerRequest* request);
+    void _handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleGuestAnalytics(AsyncWebServerRequest* request);
+    void _handleGuestAnalyticsDelete(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleGuestQuotaClear(AsyncWebServerRequest* request);
+    void _handleLastLog(AsyncWebServerRequest* request);
+    void _handleSession(AsyncWebServerRequest* request);
+
     // ── WebSocket ────────────────────────────────────────────────
     void _onWsEvent(AsyncWebSocket* ws, AsyncWebSocketClient* client,
                     AwsEventType type, void* arg, uint8_t* data, size_t len);
