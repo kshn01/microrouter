@@ -5,6 +5,9 @@
   import Topbar from './components/layout/Topbar.svelte'
   import ToastContainer from './components/ui/ToastContainer.svelte'
   import DashboardView from './views/DashboardView.svelte'
+  import DnsView from './views/DnsView.svelte'
+  import DevicesView from './views/DevicesView.svelte'
+  import ParentalView from './views/ParentalView.svelte'
   import WiFiView from './views/WiFiView.svelte'
   import SystemView from './views/SystemView.svelte'
   import OTAView from './views/OTAView.svelte'
@@ -15,6 +18,9 @@
 
   const routes = {
     '/': DashboardView,
+    '/dns': DnsView,
+    '/devices': DevicesView,
+    '/parental': ParentalView,
     '/wifi': WiFiView,
     '/system': SystemView,
     '/ota': OTAView,

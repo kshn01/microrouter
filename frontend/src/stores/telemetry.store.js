@@ -22,6 +22,11 @@ export const telemetry = writable({
   fwVersion: '1.0.0',
   partition: 'ota_0',
   fwValidated: true,
+  dnsTotal: 0,
+  dnsBlocked: 0,
+  dnsProfile: 'cloudflare',
+  curfewActive: false,
+  connectedDevices: 0,
 })
 
 export const uptime = derived(telemetry, ($t) => $t.uptimeMs || 0)
@@ -38,6 +43,11 @@ export const activePartition = derived(telemetry, ($t) => $t.partition || 'ota_0
 export const fwVersion = derived(telemetry, ($t) => $t.fwVersion || '1.0.0')
 export const fwValidated = derived(telemetry, ($t) => $t.fwValidated || false)
 export const bootCount = derived(telemetry, ($t) => $t.bootCount || 0)
+export const dnsTotal = derived(telemetry, ($t) => $t.dnsTotal || 0)
+export const dnsBlocked = derived(telemetry, ($t) => $t.dnsBlocked || 0)
+export const dnsProfile = derived(telemetry, ($t) => $t.dnsProfile || 'cloudflare')
+export const curfewActive = derived(telemetry, ($t) => $t.curfewActive || false)
+export const connectedDevicesCount = derived(telemetry, ($t) => $t.connectedDevices || 0)
 
 export function updateTelemetry(data) {
   if (data) {

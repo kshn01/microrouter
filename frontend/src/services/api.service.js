@@ -3,7 +3,20 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import { API_ENDPOINTS, TIMING } from '../config/constants.js'
-import { getMockSystemInfo, getMockWifiNetworks } from './mock.service.js'
+import {
+  getMockSystemInfo,
+  getMockWifiNetworks,
+  getMockDnsConfig,
+  setMockDnsConfig,
+  getMockDnsQueries,
+  clearMockDnsQueries,
+  getMockDevices,
+  blockMockDevice,
+  setMockDeviceWaiver,
+  getMockGuestLimits,
+  setMockGuestLimits,
+  setMockGuestQuota,
+} from './mock.service.js'
 import { showToast } from './toast.service.js'
 
 let isSimulationMode = false
@@ -35,6 +48,10 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+// ───────────────────────────────────────────────────────────────────
+// System & Wi-Fi Operations
+// ───────────────────────────────────────────────────────────────────
+
 /**
  * Fetch system diagnostic information
  */
@@ -56,7 +73,6 @@ export async function apiFetchSystemInfo() {
  */
 export async function apiScanWiFiNetworks() {
   if (isSimulationMode) {
-    // Artificial delay to simulate real scanning
     await new Promise((r) => setTimeout(r, 1200))
     return { networks: getMockWifiNetworks() }
   }
@@ -115,4 +131,134 @@ export async function apiRestartSystem() {
   } catch {
     // Restarting drops connection, so errors are expected
   }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// DNS Shield & Spyglass
+// ───────────────────────────────────────────────────────────────────
+
+export async function apiGetDnsConfig() {
+  if (isSimulationMode) {
+    return getMockDnsConfig()
+  }
+  try {
+    return await fetchWithTimeout(API_ENDPOINTS.DNS_GET)
+  } catch (err) {
+    console.warn('[API] DNS get failed, fallback to mock:', err.message)
+    return getMockDnsConfig()
+  }
+}
+
+export async function apiSetDnsConfig(config) {
+  if (isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 400))
+    showToast('DNS Shield settings updated (Simulated)', 'success')
+    return setMockDnsConfig(config)
+  }
+  return await fetchWithTimeout(API_ENDPOINTS.DNS_SET, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  })
+}
+
+export async function apiGetDnsQueries() {
+  if (isSimulationMode) {
+    return getMockDnsQueries()
+  }
+  try {
+    return await fetchWithTimeout(API_ENDPOINTS.DNS_QUERIES)
+  } catch (err) {
+    return getMockDnsQueries()
+  }
+}
+
+export async function apiClearDnsQueries() {
+  if (isSimulationMode) {
+    return clearMockDnsQueries()
+  }
+  return await fetchWithTimeout(API_ENDPOINTS.DNS_CLEAR_QUERIES, { method: 'POST' })
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Connected Devices & Access Control
+// ───────────────────────────────────────────────────────────────────
+
+export async function apiGetDevices() {
+  if (isSimulationMode) {
+    return getMockDevices()
+  }
+  try {
+    return await fetchWithTimeout(API_ENDPOINTS.DEVICES)
+  } catch (err) {
+    return getMockDevices()
+  }
+}
+
+export async function apiBlockDevice(mac, blocked) {
+  if (isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 300))
+    showToast(blocked ? `Device ${mac} blocked (Simulated)` : `Device ${mac} allowed (Simulated)`, 'info')
+    return blockMockDevice(mac, blocked)
+  }
+  const endpoint = blocked ? API_ENDPOINTS.DEVICE_BLOCK : API_ENDPOINTS.DEVICE_ALLOW
+  return await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mac }),
+  })
+}
+
+export async function apiSetDeviceWaiver(mac, minutes) {
+  if (isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 300))
+    showToast(`Access waiver granted for ${minutes} min (Simulated)`, 'success')
+    return setMockDeviceWaiver(mac, minutes)
+  }
+  return await fetchWithTimeout(API_ENDPOINTS.DEVICE_WAIVER, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mac, minutes }),
+  })
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Curfew & Parental Controls
+// ───────────────────────────────────────────────────────────────────
+
+export async function apiGetGuestLimits() {
+  if (isSimulationMode) {
+    return getMockGuestLimits()
+  }
+  try {
+    return await fetchWithTimeout(API_ENDPOINTS.GUEST_LIMIT_GET)
+  } catch (err) {
+    return getMockGuestLimits()
+  }
+}
+
+export async function apiSetGuestLimits(limits) {
+  if (isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 400))
+    showToast('Guest curfew schedule saved (Simulated)', 'success')
+    return setMockGuestLimits(limits)
+  }
+  return await fetchWithTimeout(API_ENDPOINTS.GUEST_LIMIT_SET, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(limits),
+  })
+}
+
+export async function apiSetGuestQuota(dailyQuotaMB, hourlyQuotaMB) {
+  if (isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 400))
+    showToast('Bandwidth quotas saved (Simulated)', 'success')
+    return setMockGuestQuota(dailyQuotaMB, hourlyQuotaMB)
+  }
+  return await fetchWithTimeout(API_ENDPOINTS.GUEST_QUOTA_SET, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dailyQuotaMB, hourlyQuotaMB }),
+  })
 }

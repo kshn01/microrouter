@@ -1,5 +1,15 @@
 <script>
-  import { Activity, Wifi, Cpu, ArrowUpRight, Radio, Server } from '@lucide/svelte'
+  import {
+    Activity,
+    Wifi,
+    Cpu,
+    ArrowUpRight,
+    Radio,
+    Server,
+    Shield,
+    Laptop,
+    Moon,
+  } from '@lucide/svelte'
   import { activePartition, wifiIp } from '../../stores/telemetry.store.js'
   import { connectionState } from '../../stores/connection.store.js'
 
@@ -7,6 +17,9 @@
 
   const navItems = [
     { href: '#/', label: 'Dashboard', icon: Activity },
+    { href: '#/dns', label: 'DNS Shield', icon: Shield },
+    { href: '#/devices', label: 'Devices', icon: Laptop },
+    { href: '#/parental', label: 'Parental Controls', icon: Moon },
     { href: '#/wifi', label: 'WiFi Network', icon: Wifi },
     { href: '#/system', label: 'Diagnostics', icon: Cpu },
     { href: '#/ota', label: 'OTA Firmware', icon: ArrowUpRight },

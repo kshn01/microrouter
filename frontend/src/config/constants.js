@@ -17,6 +17,23 @@ export const API_ENDPOINTS = {
   WIFI_DISCONNECT: '/api/wifi/disconnect',
   OTA_PORTAL: '/update',
   WEBSOCKET: '/ws',
+
+  // DNS Shield & Spyglass
+  DNS_GET: '/api/dns/get',
+  DNS_SET: '/api/dns/set',
+  DNS_QUERIES: '/api/dns/queries',
+  DNS_CLEAR_QUERIES: '/api/dns/queries/clear',
+
+  // Connected Devices & Access Control
+  DEVICES: '/api/devices',
+  DEVICE_BLOCK: '/api/device/block',
+  DEVICE_ALLOW: '/api/device/allow',
+  DEVICE_WAIVER: '/api/device/waiver',
+
+  // Curfew & Parental Controls
+  GUEST_LIMIT_GET: '/api/guest/limit/get',
+  GUEST_LIMIT_SET: '/api/guest/limit/set',
+  GUEST_QUOTA_SET: '/api/guest/quota/set',
 }
 
 export const TIMING = {
