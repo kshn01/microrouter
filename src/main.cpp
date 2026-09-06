@@ -38,9 +38,14 @@ void setup() {
 
     // ── LittleFS ─────────────────────────────────────────────────
     Serial.println("[Boot] Mounting LittleFS...");
-    if (!LittleFS.begin(true)) {
-        Serial.println("[Boot] ERROR: LittleFS mount failed!");
-        // Continue without filesystem — API will still work
+    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
+        if (!LittleFS.begin(true, "/littlefs", 10, "spiffs")) {
+            Serial.println("[Boot] ERROR: LittleFS mount failed!");
+        } else {
+            Serial.printf("[Boot] LittleFS (spiffs): %u KB used / %u KB total\n",
+                          LittleFS.usedBytes() / 1024,
+                          LittleFS.totalBytes() / 1024);
+        }
     } else {
         Serial.printf("[Boot] LittleFS: %u KB used / %u KB total\n",
                       LittleFS.usedBytes() / 1024,

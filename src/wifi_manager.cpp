@@ -19,6 +19,17 @@ void WiFiManager::begin() {
         return;
     }
 
+#if defined(DEFAULT_WIFI_SSID) && defined(DEFAULT_WIFI_PASS)
+    if (strlen(DEFAULT_WIFI_SSID) > 0) {
+        Serial.printf("[WiFi] Trying default configured network: %s\n", DEFAULT_WIFI_SSID);
+        if (_tryConnect(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS, WIFI_CONNECT_TIMEOUT_MS)) {
+            _saveCredentials(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
+            Serial.println("[WiFi] Connected to default network and saved to NVS!");
+            return;
+        }
+    }
+#endif
+
     // No saved creds or connection failed — start AP for setup
     Serial.println("[WiFi] No saved network or connection failed. Starting AP...");
     startAP();
