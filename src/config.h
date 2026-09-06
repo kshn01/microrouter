@@ -19,6 +19,27 @@
 #define FIRMWARE_NAME       "MicroRouter"
 #define DEVICE_HOSTNAME     "microrouter"
 
+// ── Credentials / Secrets ────────────────────────────────────────
+#if __has_include("secrets.h")
+  #include "secrets.h"
+#endif
+
+#ifndef DEFAULT_WIFI_SSID
+  #ifdef SECRET_WIFI_SSID
+    #define DEFAULT_WIFI_SSID SECRET_WIFI_SSID
+  #else
+    #define DEFAULT_WIFI_SSID ""
+  #endif
+#endif
+
+#ifndef DEFAULT_WIFI_PASS
+  #ifdef SECRET_WIFI_PASS
+    #define DEFAULT_WIFI_PASS SECRET_WIFI_PASS
+  #else
+    #define DEFAULT_WIFI_PASS ""
+  #endif
+#endif
+
 // ── WiFi — Station Mode ─────────────────────────────────────────
 #define WIFI_CONNECT_TIMEOUT_MS     15000   // 15s to connect before falling back to AP
 #define WIFI_RECONNECT_INTERVAL_MS  30000   // Retry every 30s if connection lost
@@ -32,7 +53,11 @@
 
 // ── OTA Updates ──────────────────────────────────────────────────
 #define OTA_USERNAME                "admin"
-#define OTA_PASSWORD                "microrouter"
+#ifdef SECRET_PORTAL_PASS
+  #define OTA_PASSWORD              SECRET_PORTAL_PASS
+#else
+  #define OTA_PASSWORD              "admin"
+#endif
 #define BOOT_VALIDATION_DELAY_MS    30000   // 30s — mark firmware valid after this
 
 // ── Web Server ───────────────────────────────────────────────────
@@ -42,7 +67,11 @@
 #define WS_BROADCAST_INTERVAL_MS    2000    // Push stats every 2s
 
 // ── Router Gateway ───────────────────────────────────────────────
-#define ROUTER_GATEWAY_IP           "192.168.1.1"
+#ifdef SECRET_ROUTER_IP
+  #define ROUTER_GATEWAY_IP         SECRET_ROUTER_IP
+#else
+  #define ROUTER_GATEWAY_IP         "192.168.1.1"
+#endif
 
 // ── NVS Namespace Keys ───────────────────────────────────────────
 #define NVS_NAMESPACE               "microrouter"

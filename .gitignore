@@ -18,3 +18,4 @@ frontend/node_modules/
 frontend/.svelte-kit/
 frontend/dist/
 *.log
+*secrets.h
