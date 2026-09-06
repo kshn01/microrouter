@@ -37,6 +37,22 @@ public:
     void fetchRouterHealth();
     String routerGET(const String& path);
 
+    // Direct Router DNS Profile Management, DHCP DNS & Local Domain Registration
+    String getDnsContextToken();
+    String getLanIpv4ContextToken();
+    bool fetchRouterDnsSettings(String& primaryDns, String& secondaryDns);
+    bool fetchRouterDhcpDnsSettings(String& primaryDns, String& secondaryDns, int& dnsSource);
+    bool applyRouterDns(const String& primaryDns, const String& secondaryDns);
+    bool applyRouterDhcpDns(const String& primaryDns, const String& secondaryDns);
+    bool registerRouterLocalDomain(const String& hostname, const String& ip);
+    bool syncRouterDnsProfile(const String& profileKey, const String& customPrimary = "", const String& customSecondary = "", bool highAvailability = true);
+    void syncRouterDnsAtBoot();
+
+    bool isDnsSynced() const { return _dnsSynced; }
+    String getRouterDnsPrimary() const { return _routerDnsPrimary; }
+    String getRouterDnsSecondary() const { return _routerDnsSecondary; }
+    bool isHaMode() const { return _haMode; }
+
 private:
     String _getRawInitialSID();
     String _extractTokenFromStream(WiFiClient* stream, unsigned long maxWaitMs = 8000);
@@ -57,6 +73,13 @@ private:
     int               _routerMem = 0;
     String            _routerUptime = "0m";
     String            _lastLog = "ZTE Gateway Initialized";
+
+    bool              _dnsSynced = false;
+    bool              _dnsBootSynced = false;
+    bool              _haMode = true;
+    String            _routerDnsPrimary = "192.168.1.7";
+    String            _routerDnsSecondary = "1.1.1.1";
+    String            _lastSyncedIp = "";
 };
 
 extern ZteRouterClient zteClient;

@@ -488,12 +488,16 @@ void WebServer::_handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, siz
         request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         return;
     }
+    String profile = doc["profile"].is<const char*>() ? doc["profile"].as<String>() : dnsEngine.getActiveProfileKey();
+    String primary = doc["customPrimary"].is<const char*>() ? doc["customPrimary"].as<String>() : (doc["primary"].is<const char*>() ? doc["primary"].as<String>() : "");
+    String secondary = doc["customSecondary"].is<const char*>() ? doc["customSecondary"].as<String>() : (doc["secondary"].is<const char*>() ? doc["secondary"].as<String>() : "");
+    bool haMode = doc["haMode"].is<bool>() ? doc["haMode"].as<bool>() : (doc["hybridDns"].is<bool>() ? doc["hybridDns"].as<bool>() : zteClient.isHaMode());
+
     if (doc["profile"].is<const char*>()) {
-        dnsEngine.setProfile(doc["profile"].as<String>());
+        dnsEngine.setProfile(profile);
     }
-    if (doc["customPrimary"].is<const char*>()) {
-        dnsEngine.setCustomUpstreams(doc["customPrimary"].as<String>(),
-                                     doc["customSecondary"] | "0.0.0.0");
+    if (primary.length() > 0) {
+        dnsEngine.setCustomUpstreams(primary, secondary.length() > 0 ? secondary : "0.0.0.0");
     }
     if (doc["blockMeta"].is<bool>() || doc["blockTiktok"].is<bool>() || doc["customDomains"].is<const char*>()) {
         DnsShieldRules cur;
@@ -503,7 +507,16 @@ void WebServer::_handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, siz
         String cd = doc["customDomains"].is<const char*>() ? doc["customDomains"].as<String>() : String(cur.customDomains);
         dnsEngine.setShieldRules(bm, bt, cd);
     }
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
+
+    // Sync with ZTE Router DHCP
+    bool routerOk = zteClient.syncRouterDnsProfile(profile, primary, secondary, haMode);
+
+    JsonDocument resp;
+    resp["status"] = "ok";
+    resp["routerSynced"] = routerOk;
+    String out;
+    serializeJson(resp, out);
+    request->send(200, "application/json", out);
 }
 
 void WebServer::_handleDnsQueries(AsyncWebServerRequest* request) {
@@ -670,12 +683,14 @@ void WebServer::_handleRouterDnsGet(AsyncWebServerRequest* request) {
     JsonDocument doc;
     doc["ok"] = true;
     doc["profile"] = stats.profileKey;
-    doc["primary"] = "1.1.1.1";
-    doc["secondary"] = "1.0.0.1";
+    doc["primary"] = stats.upstreamPrimary;
+    doc["secondary"] = stats.upstreamSecondary;
     doc["dhcpPrimary"] = _wifiMgr->getIP();
-    doc["dhcpSecondary"] = "1.1.1.1";
-    doc["hybridDns"] = true;
-    doc["routerSynced"] = zteClient.isLoggedIn();
+    doc["dhcpSecondary"] = zteClient.getRouterDnsSecondary();
+    doc["hybridDns"] = zteClient.isHaMode();
+    doc["haMode"] = zteClient.isHaMode();
+    doc["routerSynced"] = zteClient.isDnsSynced();
+    doc["localDomain"] = "portal.home";
 
     String out;
     serializeJson(doc, out);
@@ -684,8 +699,9 @@ void WebServer::_handleRouterDnsGet(AsyncWebServerRequest* request) {
 
 void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
     String profile = "ultra_fast";
-    String primary = "1.1.1.1";
-    String secondary = "1.0.0.1";
+    String primary = "";
+    String secondary = "";
+    bool haMode = zteClient.isHaMode();
 
     if (request->hasParam("profile")) {
         profile = request->getParam("profile")->value();
@@ -696,18 +712,27 @@ void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* dat
             if (doc["profile"].is<const char*>()) profile = doc["profile"].as<String>();
             if (doc["primary"].is<const char*>()) primary = doc["primary"].as<String>();
             if (doc["secondary"].is<const char*>()) secondary = doc["secondary"].as<String>();
+            if (doc["haMode"].is<bool>()) haMode = doc["haMode"].as<bool>();
+            else if (doc["hybridDns"].is<bool>()) haMode = doc["hybridDns"].as<bool>();
         }
     }
 
-    dnsEngine.setProfile(profile);
-    bool ok = zteClient.syncDns(primary, secondary);
+    bool ok = zteClient.syncRouterDnsProfile(profile, primary, secondary, haMode);
+
+    DnsStatsSnapshot stats;
+    dnsEngine.getStats(&stats);
 
     JsonDocument resp;
     resp["ok"] = true;
-    resp["profile"] = profile;
-    resp["primary"] = primary;
-    resp["secondary"] = secondary;
+    resp["profile"] = stats.profileKey;
+    resp["primary"] = stats.upstreamPrimary;
+    resp["secondary"] = stats.upstreamSecondary;
+    resp["dhcpPrimary"] = _wifiMgr->getIP();
+    resp["dhcpSecondary"] = zteClient.getRouterDnsSecondary();
+    resp["hybridDns"] = zteClient.isHaMode();
+    resp["haMode"] = zteClient.isHaMode();
     resp["routerSynced"] = ok;
+    resp["localDomain"] = "portal.home";
 
     String out;
     serializeJson(resp, out);

@@ -188,6 +188,42 @@ export async function apiClearDnsQueries() {
   return await fetchWithTimeout(API_ENDPOINTS.DNS_CLEAR_QUERIES, { method: 'POST' })
 }
 
+export async function apiGetRouterDns() {
+  if (import.meta.env.DEV && isSimulationMode) {
+    return {
+      ok: true,
+      profile: 'ultra_fast',
+      primary: '1.1.1.1',
+      secondary: '1.0.0.1',
+      dhcpPrimary: '192.168.1.7',
+      dhcpSecondary: '1.1.1.1',
+      hybridDns: true,
+      haMode: true,
+      routerSynced: true,
+      localDomain: 'portal.home',
+    }
+  }
+  try {
+    return await fetchWithTimeout(API_ENDPOINTS.ROUTER_DNS_GET)
+  } catch (err) {
+    console.warn('[API] Router DNS get failed:', err.message)
+    return null
+  }
+}
+
+export async function apiSetRouterDns(data) {
+  if (import.meta.env.DEV && isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 400))
+    showToast('Router DNS DHCP settings applied (Simulated)', 'success')
+    return { ok: true, routerSynced: true, ...data }
+  }
+  return await fetchWithTimeout(API_ENDPOINTS.ROUTER_DNS_SET, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
 // ───────────────────────────────────────────────────────────────────
 // Connected Devices & Access Control
 // ───────────────────────────────────────────────────────────────────

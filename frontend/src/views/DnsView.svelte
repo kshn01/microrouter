@@ -12,7 +12,12 @@
     XCircle,
     Sliders,
     Zap,
-    Lock
+    Lock,
+    Server,
+    ExternalLink,
+    Layers,
+    Check,
+    AlertTriangle
   } from '@lucide/svelte'
   import Card from '../components/ui/Card.svelte'
   import StatCard from '../components/ui/StatCard.svelte'
@@ -21,6 +26,8 @@
     apiSetDnsConfig,
     apiGetDnsQueries,
     apiClearDnsQueries,
+    apiGetRouterDns,
+    apiSetRouterDns,
   } from '../services/api.service.js'
   import { showToast } from '../services/toast.service.js'
 
@@ -28,6 +35,7 @@
   let loading = $state(true)
   let saving = $state(false)
   let clearing = $state(false)
+  let syncingRouter = $state(false)
   let searchQuery = $state('')
 
   let config = $state({
@@ -39,6 +47,14 @@
     blockTiktok: false,
     totalQueries: 0,
     blockedQueries: 0,
+  })
+
+  let routerDns = $state({
+    routerSynced: false,
+    dhcpPrimary: '192.168.1.7',
+    dhcpSecondary: '1.1.1.1',
+    haMode: true,
+    localDomain: 'portal.home',
   })
 
   let queries = $state([])
@@ -112,9 +128,10 @@
 
   async function loadData() {
     try {
-      const [cfgRes, qRes] = await Promise.all([
+      const [cfgRes, qRes, rDnsRes] = await Promise.all([
         apiGetDnsConfig(),
         apiGetDnsQueries(),
+        apiGetRouterDns(),
       ])
       if (cfgRes) {
         config = {
@@ -124,6 +141,13 @@
           secondary: cfgRes.secondary || cfgRes.secondaryIp || config.secondary,
           totalQueries: cfgRes.totalQueries ?? cfgRes.total ?? config.totalQueries,
           blockedQueries: cfgRes.blockedQueries ?? cfgRes.blocked ?? config.blockedQueries,
+        }
+      }
+      if (rDnsRes) {
+        routerDns = {
+          ...routerDns,
+          ...rDnsRes,
+          haMode: rDnsRes.haMode ?? rDnsRes.hybridDns ?? true,
         }
       }
       if (qRes) {
@@ -150,19 +174,45 @@
   async function saveDnsConfig() {
     saving = true
     try {
-      await apiSetDnsConfig({
+      const res = await apiSetDnsConfig({
         profile: config.profile,
         primary: config.primary,
         secondary: config.secondary,
         dohCanary: config.dohCanary,
         blockMeta: config.blockMeta,
         blockTiktok: config.blockTiktok,
+        haMode: routerDns.haMode,
       })
-      showToast('DNS Shield configuration applied', 'success')
+      if (res && res.routerSynced !== undefined) {
+        routerDns.routerSynced = res.routerSynced
+      }
+      showToast('DNS Shield & Router DHCP synchronized', 'success')
     } catch (err) {
       showToast('Failed to save DNS settings: ' + err.message, 'error')
     } finally {
       saving = false
+    }
+  }
+
+  async function syncRouterDns() {
+    syncingRouter = true
+    try {
+      const res = await apiSetRouterDns({
+        profile: config.profile,
+        primary: config.primary,
+        secondary: config.secondary,
+        haMode: routerDns.haMode,
+      })
+      if (res && res.routerSynced) {
+        routerDns.routerSynced = true
+        showToast('ZTE Gateway DHCP Option 6 & Local Domain synchronized!', 'success')
+      } else {
+        showToast('Sync request sent to ZTE Gateway', 'info')
+      }
+    } catch (err) {
+      showToast('Router sync failed: ' + err.message, 'error')
+    } finally {
+      syncingRouter = false
     }
   }
 
@@ -293,6 +343,114 @@
       color="cyan"
       icon={Lock}
     />
+  </div>
+
+  <!-- High-Availability Hybrid Router Integration Card -->
+  <div class="relative overflow-hidden rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/60 to-slate-950/80 p-5 sm:p-6 backdrop-blur-xl shadow-xl shadow-indigo-950/20">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+          <Server class="w-6 h-6" />
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 class="text-base font-bold text-white tracking-tight">High-Availability Hybrid Gateway DNS</h2>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold {routerDns.routerSynced ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'}">
+              <span class="w-1.5 h-1.5 rounded-full {routerDns.routerSynced ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}"></span>
+              {routerDns.routerSynced ? 'Synced with ZTE Gateway' : 'Pending Gateway Push'}
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Automated DHCP Option 6 broadcast to all home devices with zero-downtime failover protection
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          onclick={syncRouterDns}
+          disabled={syncingRouter}
+          class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-500/40 transition-all disabled:opacity-50 shadow-sm"
+        >
+          <RefreshCw class="w-3.5 h-3.5 {syncingRouter ? 'animate-spin' : ''}" />
+          {syncingRouter ? 'Pushing to Router...' : 'Sync to Router DHCP'}
+        </button>
+      </div>
+    </div>
+
+    <!-- Active DNS Distribution Flow -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
+      <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">DHCP Option 6 (Primary)</span>
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">MicroRouter ESP32</span>
+        </div>
+        <div class="text-lg font-mono font-bold text-white">{routerDns.dhcpPrimary || '192.168.1.7'}</div>
+        <p class="text-[11px] text-slate-400 leading-snug">All phones & PCs on Wi-Fi query this IP automatically for ad & threat filtering.</p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">DHCP Option 6 (Secondary)</span>
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold {routerDns.haMode ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-700/50 text-slate-400 border border-slate-600'}">
+            {routerDns.haMode ? 'Zero-Downtime Fallback' : 'Strict (None)'}
+          </span>
+        </div>
+        <div class="text-lg font-mono font-bold {routerDns.haMode ? 'text-emerald-400' : 'text-slate-500'}">
+          {routerDns.haMode ? (routerDns.dhcpSecondary || '1.1.1.1') : '0.0.0.0'}
+        </div>
+        <p class="text-[11px] text-slate-400 leading-snug">
+          {routerDns.haMode ? 'Seamless failover: family never loses internet if ESP32 reboots or is unplugged.' : '100% of DNS queries must pass through ESP32 without upstream bypass.'}
+        </p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Local Host Domain</span>
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">Router DNS Table</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <a
+            href="http://portal.home"
+            target="_blank"
+            rel="noreferrer"
+            class="text-lg font-mono font-bold text-purple-300 hover:text-purple-200 transition-colors flex items-center gap-1.5"
+          >
+            portal.home
+            <ExternalLink class="w-3.5 h-3.5 opacity-70" />
+          </a>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-snug">Accessible from any browser on your home network without typing an IP address.</p>
+      </div>
+    </div>
+
+    <!-- Mode Selector Banner -->
+    <div class="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <Layers class="w-4 h-4 text-indigo-400 flex-shrink-0" />
+        <span class="text-xs font-semibold text-slate-300">Deployment Operational Mode:</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          onclick={() => { routerDns.haMode = true; }}
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {routerDns.haMode ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30' : 'bg-white/5 text-slate-400 hover:bg-white/10'}"
+        >
+          {#if routerDns.haMode}<Check class="w-3.5 h-3.5" />{/if}
+          High Availability (Recommended)
+        </button>
+
+        <button
+          type="button"
+          onclick={() => { routerDns.haMode = false; }}
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {!routerDns.haMode ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30' : 'bg-white/5 text-slate-400 hover:bg-white/10'}"
+        >
+          {#if !routerDns.haMode}<Check class="w-3.5 h-3.5" />{/if}
+          Strict Shield (Zero Leak)
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Upstream DNS Profiles & Filters Grid -->
