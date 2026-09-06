@@ -52,4 +52,23 @@ export default defineConfig({
       },
     },
   },
+
+  // Preview server proxy to ESP32 for testing production builds locally
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api': {
+        target: 'http://microrouter.local',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://microrouter.local',
+        ws: true,
+      },
+      '/update': {
+        target: 'http://microrouter.local',
+        changeOrigin: true,
+      },
+    },
+  },
 })

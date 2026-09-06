@@ -75,11 +75,11 @@ function connectLiveWebSocket() {
   socket.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
-      if (msg.type === 'stats' && msg.data && telemetrySubscriber) {
-        telemetrySubscriber(msg.data)
+      if (msg.type === 'stats' && telemetrySubscriber) {
+        telemetrySubscriber(msg.data || msg)
       }
-    } catch {
-      // ignore invalid telemetry payloads
+    } catch (e) {
+      console.error('[WS] Failed to parse message', e)
     }
   }
 

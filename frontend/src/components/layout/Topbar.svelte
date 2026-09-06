@@ -45,15 +45,23 @@
       <span>{$wifiConnected ? $wifiSsid : 'MicroRouter-Setup AP'}</span>
     </div>
 
-    <!-- Toggle Simulation Button (Dev Tool) -->
+    <!-- Toggle Simulation Switch (Dev Tool) -->
     {#if import.meta.env.DEV}
     <button
       onclick={toggleSimulation}
-      class="px-3 py-1.5 rounded-xl text-xs font-medium border border-white/10 hover:border-white/20 transition-all flex items-center gap-1.5 {$connectionState.isSimulated ? 'bg-amber-500/10 text-amber-300' : 'bg-white/5 text-slate-300'}"
+      class="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-white/10 hover:border-white/20 transition-all flex items-center gap-2 bg-white/[0.04] cursor-pointer"
       title="Toggle between hardware connection and offline mock simulation"
+      aria-label="Toggle Mock Simulation Mode"
     >
-      <Cpu class="w-3.5 h-3.5" />
-      <span class="hidden md:inline">{$connectionState.isSimulated ? 'Mock Active' : 'Live Mode'}</span>
+      <div class="flex items-center gap-1.5 {$connectionState.isSimulated ? 'text-amber-300 font-semibold' : 'text-slate-400'} transition-colors">
+        <Cpu class="w-3.5 h-3.5" />
+        <span class="hidden sm:inline">Mock</span>
+      </div>
+
+      <!-- Animated Switch Track & Thumb -->
+      <div class="w-7 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out flex items-center {$connectionState.isSimulated ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'bg-white/20'}">
+        <div class="w-3 h-3 rounded-full bg-white shadow-sm transform transition-transform duration-200 ease-in-out {$connectionState.isSimulated ? 'translate-x-3' : 'translate-x-0'}"></div>
+      </div>
     </button>
     {/if}
 

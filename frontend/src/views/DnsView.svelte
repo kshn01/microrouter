@@ -117,12 +117,28 @@
         apiGetDnsQueries(),
       ])
       if (cfgRes) {
-        config = { ...config, ...cfgRes }
+        config = {
+          ...config,
+          ...cfgRes,
+          primary: cfgRes.primary || cfgRes.primaryIp || config.primary,
+          secondary: cfgRes.secondary || cfgRes.secondaryIp || config.secondary,
+          totalQueries: cfgRes.totalQueries ?? cfgRes.total ?? config.totalQueries,
+          blockedQueries: cfgRes.blockedQueries ?? cfgRes.blocked ?? config.blockedQueries,
+        }
       }
-      if (qRes && qRes.queries) {
-        queries = qRes.queries
-        if (qRes.total !== undefined) config.totalQueries = qRes.total
-        if (qRes.blocked !== undefined) config.blockedQueries = qRes.blocked
+      if (qRes) {
+        if (qRes.queries && Array.isArray(qRes.queries)) {
+          queries = qRes.queries.map(q => ({
+            ...q,
+            blocked: q.blocked !== undefined ? q.blocked : (q.status === 'BLOCKED' || q.status === 'CANARY'),
+            reason: q.reason || q.status || 'RESOLVED'
+          }))
+        }
+        const stats = qRes.stats || qRes
+        if (stats.total !== undefined) config.totalQueries = stats.total
+        if (stats.totalQueries !== undefined) config.totalQueries = stats.totalQueries
+        if (stats.blocked !== undefined) config.blockedQueries = stats.blocked
+        if (stats.blockedQueries !== undefined) config.blockedQueries = stats.blockedQueries
       }
     } catch (err) {
       console.error('Failed to load DNS data', err)
@@ -186,10 +202,19 @@
     pollInterval = setInterval(async () => {
       try {
         const qRes = await apiGetDnsQueries()
-        if (qRes && qRes.queries) {
-          queries = qRes.queries
-          if (qRes.total !== undefined) config.totalQueries = qRes.total
-          if (qRes.blocked !== undefined) config.blockedQueries = qRes.blocked
+        if (qRes) {
+          if (qRes.queries && Array.isArray(qRes.queries)) {
+            queries = qRes.queries.map(q => ({
+              ...q,
+              blocked: q.blocked !== undefined ? q.blocked : (q.status === 'BLOCKED' || q.status === 'CANARY'),
+              reason: q.reason || q.status || 'RESOLVED'
+            }))
+          }
+          const stats = qRes.stats || qRes
+          if (stats.total !== undefined) config.totalQueries = stats.total
+          if (stats.totalQueries !== undefined) config.totalQueries = stats.totalQueries
+          if (stats.blocked !== undefined) config.blockedQueries = stats.blocked
+          if (stats.blockedQueries !== undefined) config.blockedQueries = stats.blockedQueries
         }
       } catch (e) {
         // silent poll error

@@ -566,6 +566,8 @@ String DNSEngine::getRecentQueriesJson() {
         q["latencyMs"] = records[i].latencyMs;
         q["timestamp"] = records[i].timestamp;
         q["status"]    = statusToString(records[i].status);
+        q["blocked"]   = (records[i].status == DNS_STATUS_BLOCKED || records[i].status == DNS_STATUS_CANARY);
+        q["reason"]    = statusToString(records[i].status);
         q["qType"]     = records[i].qType == 28 ? "AAAA" : "A";
     }
 

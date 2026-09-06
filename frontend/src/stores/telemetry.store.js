@@ -51,6 +51,7 @@ export const connectedDevicesCount = derived(telemetry, ($t) => $t.connectedDevi
 
 export function updateTelemetry(data) {
   if (data) {
-    telemetry.set(data)
+    const payload = data.data ? { ...data.data } : data
+    telemetry.set(payload)
   }
 }
