@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include "config.h"
+#include "wifi_scan_policy.h"
 #include <ArduinoJson.h>
 
 // ╔══════════════════════════════════════════════════════════════╗
@@ -113,7 +114,17 @@ int8_t WiFiManager::getRSSI() const {
 String WiFiManager::scanNetworks() {
     Serial.println("[WiFi] Scanning networks...");
 
-    int n = WiFi.scanNetworks(false, false);
+    if (!_scanInProgress) {
+        int previous = WiFi.scanComplete();
+        if (previous >= 0) WiFi.scanDelete();
+        WiFi.scanNetworks(true, false, false, 100);
+        _scanInProgress = true;
+    }
+
+    int n = WiFi.scanComplete();
+    if (n == WIFI_SCAN_RUNNING) {
+        return "{\"status\":\"scanning\",\"networks\":[],\"count\":0}";
+    }
 
     JsonDocument doc;
     JsonArray networks = doc["networks"].to<JsonArray>();
@@ -122,7 +133,7 @@ String WiFiManager::scanNetworks() {
         for (int i = 0; i < n; i++) {
             int channel = WiFi.channel(i);
             String ssid = WiFi.SSID(i);
-            if (channel > 14 || ssid.length() == 0) continue;
+            if (!isUsableWifiScanResult(channel, ssid.length() > 0)) continue;
             JsonObject net = networks.add<JsonObject>();
             net["ssid"]     = ssid;
             net["rssi"]     = WiFi.RSSI(i);
@@ -133,7 +144,10 @@ String WiFiManager::scanNetworks() {
         WiFi.scanDelete();
     } else {
         doc["count"] = 0;
+        WiFi.scanDelete();
     }
+    _scanInProgress = false;
+    doc["status"] = n < 0 ? "failed" : "complete";
 
     String output;
     serializeJson(doc, output);

@@ -48,6 +48,7 @@ public:
     bool grantWaiver(const String& mac, uint32_t durationSecs);
     bool revokeWaiver(const String& mac);
     bool hasActiveWaiver(const String& mac) const;
+    uint32_t getWaiverRemainingSecs(const String& mac) const;
     String getWaiversJson() const;
 
     // Curfew Schedules

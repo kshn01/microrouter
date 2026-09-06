@@ -65,15 +65,15 @@
         devices = rawList.map((d) => {
           const oui = lookupOUI(d.mac)
           return {
-            mac: d.mac || '00:00:00:00:00:00',
+            mac: d.mac || '—',
             ip: d.ip || '—',
             hostname: d.hostname || '',
             netbios: d.netbios || '',
-            band: d.band || '2.4G',
-            rssi: d.rssi !== undefined ? d.rssi : -65,
-            online: d.online !== undefined ? d.online : true,
+            band: d.band || '—',
+            rssi: d.rssi !== undefined ? d.rssi : 0,
+            online: d.online !== undefined ? d.online : false,
             isBlocked: d.isBlocked !== undefined ? d.isBlocked : (d.blocked || false),
-            waiverSecRemaining: d.waiverSecRemaining || (d.waiver ? 1800 : 0),
+            waiverSecRemaining: d.waiverSecRemaining || d.waiverRemaining || 0,
             rxBytes: d.rxBytes || d.dlBytes || d.download_bytes || 0,
             txBytes: d.txBytes || d.ulBytes || d.upload_bytes || 0,
             hourlyUsage: d.hourlyUsage || d.hourlyUsageBytes || 0,
@@ -515,7 +515,7 @@
                 <td class="py-3 px-4 font-sans">
                   <div class="flex items-center gap-2">
                     <span class="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 text-[10px]">{dev.band}</span>
-                    <SignalBars rssi={dev.rssi || -65} />
+                    <SignalBars rssi={dev.rssi} />
                   </div>
                 </td>
                 <td class="py-3 px-4 text-emerald-400 text-[11px]">

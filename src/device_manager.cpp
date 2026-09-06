@@ -1,5 +1,6 @@
 #include "device_manager.h"
 #include "scheduler.h"
+#include "usage_policy.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -105,8 +106,7 @@ void DeviceManager::_scanSoftAPStations() {
                      esp_ip4_addr3(&station.ip),
                      esp_ip4_addr4(&station.ip));
 
-            int8_t rssi = -60; // default estimated RSSI for AP stations
-            updateDevice(macStr, ipStr, "", "2.4G", rssi, true);
+            updateDevice(macStr, ipStr, "", "2.4G", 0, true);
         }
     }
 }
@@ -119,17 +119,7 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
     if (WiFi.softAPIP().toString().equals(ip)) return;
 
     String mac = _resolveArpMac(ip);
-    if (mac.length() == 0) {
-        // Synthesize a stable, locally-administered MAC from IPv4 octets
-        int o1, o2, o3, o4;
-        if (sscanf(ip, "%d.%d.%d.%d", &o1, &o2, &o3, &o4) == 4) {
-            char synMac[18];
-            snprintf(synMac, sizeof(synMac), "02:00:%02x:%02x:%02x:%02x", o1, o2, o3, o4);
-            mac = synMac;
-        } else {
-            return;
-        }
-    }
+    if (mac.length() == 0) return;
 
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
     int idx = _findDeviceIndex(mac);
@@ -142,10 +132,6 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
     if (idx >= 0) {
         _devices[idx].online = true;
         _devices[idx].lastSeen = nowSec;
-        _devices[idx].dlBytes += 128; // Record telemetry packet transfer
-        _devices[idx].ulBytes += 64;
-        _devices[idx].hourlyUsageBytes += 192;
-        _devices[idx].dailyUsageBytes += 192;
 
         if (strlen(_devices[idx].ip) == 0 || strcmp(_devices[idx].ip, "0.0.0.0") == 0) {
             strncpy(_devices[idx].ip, ip, sizeof(_devices[idx].ip) - 1);
@@ -169,13 +155,15 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
         _devices[idx].ip[sizeof(_devices[idx].ip) - 1] = '\0';
         _devices[idx].hostname[0] = '\0';
         strcpy(_devices[idx].band, "2.4G");
-        _devices[idx].rssi = -65;
+        _devices[idx].rssi = 0;
         _devices[idx].online = true;
         _devices[idx].blocked = false;
-        _devices[idx].dlBytes = 256;
-        _devices[idx].ulBytes = 128;
-        _devices[idx].hourlyUsageBytes = 384;
-        _devices[idx].dailyUsageBytes = 384;
+        _devices[idx].dlBytes = 0;
+        _devices[idx].ulBytes = 0;
+        _devices[idx].hourlyUsageBytes = 0;
+        _devices[idx].dailyUsageBytes = 0;
+        _devices[idx].usageHourKey = 0;
+        _devices[idx].usageDayKey = 0;
         _devices[idx].hourlyLimitHitCount = 0;
         _devices[idx].lastSeen = nowSec;
         _devices[idx].netbiosTries = 0;
@@ -193,6 +181,10 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
     uint32_t nowSec = millis() / 1000;
 
     if (idx >= 0) {
+        _rollUsageWindows(_devices[idx]);
+        uint64_t previousBytes = _devices[idx].dlBytes + _devices[idx].ulBytes;
+        uint64_t currentBytes = dl + ul;
+        uint64_t deltaBytes = byteCounterDelta(currentBytes, previousBytes);
         if (ip.length() > 0) strncpy(_devices[idx].ip, ip.c_str(), sizeof(_devices[idx].ip) - 1);
         if (hostname.length() > 0) strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
         if (band.length() > 0) strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
@@ -200,6 +192,10 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         _devices[idx].online = online;
         if (dl > 0) _devices[idx].dlBytes = dl;
         if (ul > 0) _devices[idx].ulBytes = ul;
+        if (dl > 0 || ul > 0) {
+            _devices[idx].hourlyUsageBytes += deltaBytes;
+            _devices[idx].dailyUsageBytes += deltaBytes;
+        }
         _devices[idx].lastSeen = nowSec;
     } else if (_deviceCount < MAX_TRACKED_DEVICES) {
         idx = _deviceCount++;
@@ -214,11 +210,31 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         _devices[idx].ulBytes = ul;
         _devices[idx].hourlyUsageBytes = 0;
         _devices[idx].dailyUsageBytes = 0;
+        _devices[idx].usageHourKey = 0;
+        _devices[idx].usageDayKey = 0;
         _devices[idx].hourlyLimitHitCount = 0;
         _devices[idx].lastSeen = nowSec;
         _devices[idx].netbiosTries = 0;
     }
     if (_mutex) xSemaphoreGive(_mutex);
+}
+
+void DeviceManager::_rollUsageWindows(ClientDevice& device) {
+    uint32_t epoch = scheduler.isTimeSynced()
+        ? (uint32_t)scheduler.getEpoch()
+        : millis() / 1000;
+    uint32_t hourKey = epoch / 3600;
+    uint32_t dayKey = epoch / 86400;
+
+    if (device.usageHourKey != 0 && device.usageHourKey != hourKey) {
+        device.hourlyUsageBytes = 0;
+        device.hourlyLimitHitCount = 0;
+    }
+    if (device.usageDayKey != 0 && device.usageDayKey != dayKey) {
+        device.dailyUsageBytes = 0;
+    }
+    device.usageHourKey = hourKey;
+    device.usageDayKey = dayKey;
 }
 
 int DeviceManager::_findDeviceIndex(const String& mac) const {
@@ -268,12 +284,13 @@ bool DeviceManager::isClientRestricted(const String& ip) const {
     }
 
     const ClientDevice& device = _devices[idx];
+    bool isGuest = strcasecmp(device.band, "Guest") == 0;
     bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
-    bool restricted = device.blocked || (!hasWaiver && scheduler.isCurfewActive());
+    bool restricted = device.blocked || (!hasWaiver && isGuest && scheduler.isCurfewActive());
     QuotaLimits quotas;
     scheduler.getQuotas(&quotas);
-    if (!hasWaiver && quotas.hourlyEnabled && device.hourlyUsageBytes >= quotas.hourlyLimitBytes) restricted = true;
-    if (!hasWaiver && quotas.dailyEnabled && device.dailyUsageBytes >= quotas.dailyLimitBytes) restricted = true;
+    if (!hasWaiver && isGuest && quotas.hourlyEnabled && device.hourlyUsageBytes >= quotas.hourlyLimitBytes) restricted = true;
+    if (!hasWaiver && isGuest && quotas.dailyEnabled && device.dailyUsageBytes >= quotas.dailyLimitBytes) restricted = true;
     if (_mutex) xSemaphoreGive(_mutex);
     return restricted;
 }
@@ -433,7 +450,7 @@ String DeviceManager::getDevicesJson() const {
         if (scheduler.hasActiveWaiver(_devices[i].mac)) {
             JsonObject w = waiverArr.add<JsonObject>();
             w["mac"] = _devices[i].mac;
-            w["remaining"] = 1800; // estimated remaining secs
+            w["remaining"] = scheduler.getWaiverRemainingSecs(_devices[i].mac);
         }
     }
     if (_mutex) xSemaphoreGive(_mutex);
@@ -446,6 +463,21 @@ String DeviceManager::getDevicesJson() const {
     String out;
     serializeJson(doc, out);
     return out;
+}
+
+void DeviceManager::getGuestUsage(uint64_t* rxBytes, uint64_t* txBytes) const {
+    uint64_t rx = 0;
+    uint64_t tx = 0;
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    for (size_t i = 0; i < _deviceCount; i++) {
+        if (strcasecmp(_devices[i].band, "Guest") == 0) {
+            rx += _devices[i].dlBytes;
+            tx += _devices[i].ulBytes;
+        }
+    }
+    if (_mutex) xSemaphoreGive(_mutex);
+    if (rxBytes) *rxBytes = rx;
+    if (txBytes) *txBytes = tx;
 }
 
 size_t DeviceManager::getConnectedCount() const {

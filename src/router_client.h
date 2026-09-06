@@ -21,7 +21,7 @@ public:
     virtual String getGatewayType() const = 0;
     virtual bool isLoggedIn() const { return false; }
     virtual void getStats(int& cpu, int& mem, String& uptime) const { cpu = 0; mem = 0; uptime = "0m"; }
-    virtual String getLastLog() const { return "Gateway ready"; }
+    virtual String getLastLog() const { return "Generic gateway integration unavailable"; }
 };
 
 class GenericRouterClient : public RouterClient {
@@ -50,7 +50,7 @@ public:
 
     bool syncDns(const String& primaryDns, const String& secondaryDns) override {
         Serial.printf("[RouterClient] Sync DNS: %s, %s\n", primaryDns.c_str(), secondaryDns.c_str());
-        return true;
+        return false; // Generic gateways have no supported control protocol.
     }
 
     String getGatewayType() const override {

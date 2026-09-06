@@ -28,8 +28,9 @@
   ]
 
   function isItemActive(href) {
-    if (href === '#/' && (currentHash === '#/' || currentHash === '')) return true
-    return currentHash.startsWith(href)
+    const route = currentHash.split('?')[0] || '#/'
+    if (href === '#/') return route === '#/'
+    return route === href || route.startsWith(`${href}/`)
   }
 </script>
 

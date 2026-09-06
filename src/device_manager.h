@@ -23,8 +23,10 @@ struct ClientDevice {
     uint64_t ulBytes;
     uint32_t lastSeen;
     uint8_t  netbiosTries;
-    uint32_t hourlyUsageBytes;
-    uint32_t dailyUsageBytes;
+    uint64_t hourlyUsageBytes;
+    uint64_t dailyUsageBytes;
+    uint32_t usageHourKey;
+    uint32_t usageDayKey;
     uint8_t  hourlyLimitHitCount;
 };
 
@@ -47,6 +49,7 @@ public:
     String queryNetBIOS(const String& ipStr);
 
     String getDevicesJson() const;
+    void getGuestUsage(uint64_t* rxBytes, uint64_t* txBytes) const;
     size_t getConnectedCount() const;
     size_t getTotalCount() const;
 
@@ -63,6 +66,7 @@ private:
     void _saveBlockedMacs();
     void _loadBlockedMacs();
     void _scanSoftAPStations();
+    void _rollUsageWindows(ClientDevice& device);
     String _resolveArpMac(const char* ipStr);
     void _loadGuestHistory();
     void _saveGuestHistory();

@@ -63,7 +63,7 @@ Choose the guide that fits your needs:
 - **Instant Device Access Control**: One-click Block / Allow policy with persistent flash memory (NVS).
 
 ### 🌙 Parental Controls & Curfew Scheduler
-- **NTP-Synced Bedtime Curfews**: Automatically restricts station access during scheduled sleeping hours (e.g. 10:00 PM to 6:30 AM), handling overnight crossovers smoothly.
+- **NTP-Synced Bedtime Curfews**: Automatically blocks DNS resolution for Guest stations during scheduled sleeping hours (e.g. 10:00 PM to 6:30 AM), handling overnight crossovers smoothly.
 - **Bandwidth Quota Management**: Sets daily and hourly data caps (MB) for guest stations.
 - **Temporary Emergency Waivers**: Grant 15m, 30m, 1h, or 2h access passes with a live countdown timer.
 

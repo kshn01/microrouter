@@ -6,6 +6,7 @@
 #include "zte_client.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <esp_system.h>
 #include <esp_chip_info.h>
 
@@ -512,6 +513,11 @@ void WebServer::_handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, siz
 
     // Sync with ZTE Router DHCP
     bool routerOk = zteClient.syncRouterDnsProfile(profile, primary, secondary, haMode);
+    Preferences userDnsPrefs;
+    userDnsPrefs.begin("microrouter", false);
+    userDnsPrefs.putBool("dns_user_ha", haMode);
+    userDnsPrefs.putBool("dns_user_ha_set", true);
+    userDnsPrefs.end();
 
     JsonDocument resp;
     resp["status"] = "ok";
@@ -540,8 +546,10 @@ void WebServer::_handleDeviceBlock(AsyncWebServerRequest* request, uint8_t* data
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
-        deviceManager.setBlocked(mac, true);
-        request->send(200, "application/json", "{\"status\":\"blocked\",\"mac\":\"" + mac + "\"}");
+        bool ok = deviceManager.setBlocked(mac, true);
+        request->send(ok ? 200 : 404, "application/json",
+                      "{\"status\":\"" + String(ok ? "blocked" : "not_found") +
+                      "\",\"mac\":\"" + mac + "\"}");
         return;
     }
     request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -551,9 +559,11 @@ void WebServer::_handleDeviceAllow(AsyncWebServerRequest* request, uint8_t* data
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
-        deviceManager.setBlocked(mac, false);
-        scheduler.revokeWaiver(mac);
-        request->send(200, "application/json", "{\"status\":\"allowed\",\"mac\":\"" + mac + "\"}");
+        bool ok = deviceManager.setBlocked(mac, false);
+        if (ok) scheduler.revokeWaiver(mac);
+        request->send(ok ? 200 : 404, "application/json",
+                      "{\"status\":\"" + String(ok ? "allowed" : "not_found") +
+                      "\",\"mac\":\"" + mac + "\"}");
         return;
     }
     request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -601,6 +611,12 @@ void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
     doc["timeEnabled"]     = q.timeEnabled;
     doc["dailyActiveMins"] = q.dailyActiveSecs / 60;
 
+    uint64_t guestRxBytes = 0;
+    uint64_t guestTxBytes = 0;
+    deviceManager.getGuestUsage(&guestRxBytes, &guestTxBytes);
+    doc["guestRxBytes"] = guestRxBytes;
+    doc["guestTxBytes"] = guestTxBytes;
+
     String out;
     serializeJson(doc, out);
     request->send(200, "application/json", out);
@@ -615,7 +631,39 @@ void WebServer::_handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, 
         int eH = doc["endHour"] | 6;
         int eM = doc["endMin"] | 0;
         scheduler.setCurfew(en, sH, sM, eH, eM);
-        request->send(200, "application/json", "{\"status\":\"ok\"}");
+
+        bool routerSynced = true;
+        Preferences prefs;
+        prefs.begin("microrouter", false);
+        if (en) {
+            if (!prefs.getBool("curfew_dns_forced", false)) {
+                // Keep the user's preference separate from the temporary strict mode.
+                bool hasUserDnsPreference = prefs.getBool("dns_user_ha_set", false);
+                prefs.putBool("curfew_prev_ha",
+                              hasUserDnsPreference ? prefs.getBool("dns_user_ha", true) : true);
+                prefs.putBool("curfew_dns_forced", true);
+            }
+            DnsStatsSnapshot stats;
+            dnsEngine.getStats(&stats);
+            // A DHCP secondary upstream bypasses curfew enforcement. Use strict
+            // DNS while parental controls are enabled.
+            routerSynced = zteClient.syncRouterDnsProfile(
+                stats.profileKey, stats.upstreamPrimary, stats.upstreamSecondary, false);
+        } else {
+            DnsStatsSnapshot stats;
+            dnsEngine.getStats(&stats);
+            // Curfew's strict DNS is temporary; disabling curfew restores the
+            // normal upstream fallback so clients do not remain on 0.0.0.0.
+            bool previousHaMode = true;
+            routerSynced = zteClient.syncRouterDnsProfile(
+                stats.profileKey, stats.upstreamPrimary, stats.upstreamSecondary, previousHaMode);
+            prefs.putBool("curfew_dns_forced", false);
+        }
+        prefs.end();
+
+        request->send(200, "application/json",
+                      "{\"status\":\"ok\",\"routerSynced\":" +
+                      String(routerSynced ? "true" : "false") + "}");
         return;
     }
     request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -641,13 +689,13 @@ void WebServer::_handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, s
 // ── Router Gateway Parity Handlers ───────────────────────────────
 
 void WebServer::_handleRouterReboot(AsyncWebServerRequest* request) {
-    bool ok = zteClient.reboot();
-    if (!ok || request->hasParam("system")) {
+    bool systemOnly = request->hasParam("system");
+    bool ok = systemOnly ? true : zteClient.reboot();
+    if (systemOnly) {
         _rebootPending = true;
         _rebootAt = millis() + 1000;
-        ok = true;
     }
-    request->send(200, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + "}");
+    request->send(ok ? 200 : 502, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + "}");
 }
 
 void WebServer::_handleRouterWifiToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
@@ -663,7 +711,7 @@ void WebServer::_handleRouterWifiToggle(AsyncWebServerRequest* request, uint8_t*
         }
     }
     bool ok = zteClient.toggleRadio(on);
-    request->send(200, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + ",\"state\":\"" + (on ? "1" : "0") + "\"}");
+    request->send(ok ? 200 : 502, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + ",\"state\":\"" + (on ? "1" : "0") + "\"}");
 }
 
 void WebServer::_handleRouterSsidToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
@@ -682,7 +730,7 @@ void WebServer::_handleRouterSsidToggle(AsyncWebServerRequest* request, uint8_t*
         }
     }
     bool ok = zteClient.toggleSSID(ssidIdx, enable);
-    request->send(200, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + "}");
+    request->send(ok ? 200 : 502, "application/json", "{\"ok\":" + String(ok ? "true" : "false") + "}");
 }
 
 void WebServer::_handleRouterDnsGet(AsyncWebServerRequest* request) {
@@ -726,12 +774,17 @@ void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* dat
     }
 
     bool ok = zteClient.syncRouterDnsProfile(profile, primary, secondary, haMode);
+    Preferences userDnsPrefs;
+    userDnsPrefs.begin("microrouter", false);
+    userDnsPrefs.putBool("dns_user_ha", haMode);
+    userDnsPrefs.putBool("dns_user_ha_set", true);
+    userDnsPrefs.end();
 
     DnsStatsSnapshot stats;
     dnsEngine.getStats(&stats);
 
     JsonDocument resp;
-    resp["ok"] = true;
+    resp["ok"] = ok;
     resp["profile"] = stats.profileKey;
     resp["primary"] = stats.upstreamPrimary;
     resp["secondary"] = stats.upstreamSecondary;
@@ -743,7 +796,7 @@ void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* dat
 
     String out;
     serializeJson(resp, out);
-    request->send(200, "application/json", out);
+    request->send(ok ? 200 : 502, "application/json", out);
 }
 
 void WebServer::_handleRouterDnsVerify(AsyncWebServerRequest* request) {

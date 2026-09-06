@@ -140,7 +140,7 @@
                 <div class="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
                   <span class="font-mono">{net.rssi} dBm</span>
                   <span>·</span>
-                  <span>CH {net.channel || 6}</span>
+                  <span>CH {net.channel ?? '—'}</span>
                   <span>·</span>
                   <span class="flex items-center gap-1">
                     {#if net.secure}

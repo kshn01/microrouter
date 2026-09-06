@@ -66,4 +66,5 @@ private:
     NetState      _state = NetState::DISCONNECTED;
     unsigned long _lastReconnectAttempt = 0;
     bool          _apDnsRunning = false;
+    bool          _scanInProgress = false;
 };

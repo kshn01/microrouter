@@ -1,6 +1,7 @@
 #include "dns_engine.h"
 #include "device_manager.h"
 #include "config.h"
+#include "dns_policy.h"
 
 #include <WiFi.h>
 #include <Preferences.h>
@@ -67,17 +68,6 @@ static TaskHandle_t s_dnsTaskHandle = nullptr;
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-static inline bool domainMatches(const char* domain, const char* pattern) {
-    if (!domain || !pattern) return false;
-    if (strcasecmp(domain, pattern) == 0) return true;
-    size_t dLen = strlen(domain);
-    size_t pLen = strlen(pattern);
-    if (dLen > pLen + 1 && domain[dLen - pLen - 1] == '.') {
-        if (strcasecmp(domain + dLen - pLen, pattern) == 0) return true;
-    }
-    return false;
-}
-
 static bool isDomainBlockedByPolicy(const char* domain) {
     if (!domain || domain[0] == '\0') return false;
 
@@ -125,17 +115,6 @@ static bool isDomainBlockedByPolicy(const char* domain) {
     }
 
     return false;
-}
-
-static inline bool isLocalDomain(const char* domain) {
-    if (!domain) return false;
-    if (strcasecmp(domain, "microrouter.local") == 0) return true;
-    return false;
-}
-
-static inline bool isDoHCanaryDomain(const char* domain) {
-    if (!domain) return false;
-    return strcasecmp(domain, "use-application-dns.net") == 0;
 }
 
 static void logQuery(const char* domain, const char* clientIp, uint8_t status, uint16_t latencyMs, uint8_t qType) {
@@ -261,7 +240,7 @@ static void dnsProxyTask(void* pvParameters) {
         if (qEnd < 0) continue;
 
         // 1. Local Domain Synthesis (microrouter.local / portal.home)
-        if (isLocalDomain(qDomain)) {
+        if (isLocalDnsDomain(qDomain)) {
             if (qType == 1 && qClass == 1) { // Type A
                 memcpy(s_txBuf, s_rxBuf, qEnd);
                 s_txBuf[2] = 0x85; // QR=1, AA=1, RD=1

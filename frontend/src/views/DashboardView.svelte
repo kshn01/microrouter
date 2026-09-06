@@ -105,7 +105,7 @@
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-xs text-slate-400 font-medium">Channel</span>
-        <span class="font-mono text-sm font-semibold text-white">CH {$telemetry.wifiChannel || 6} (2.4 GHz)</span>
+        <span class="font-mono text-sm font-semibold text-white">CH {$telemetry.wifiChannel || '—'} (2.4 GHz)</span>
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-xs text-slate-400 font-medium">Boot Lifecycle</span>

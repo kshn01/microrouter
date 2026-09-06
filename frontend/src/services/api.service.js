@@ -71,8 +71,8 @@ export async function apiFetchSystemInfo() {
   try {
     return await fetchWithTimeout(API_ENDPOINTS.SYSTEM_INFO)
   } catch (err) {
-    console.warn('[API] System info request failed, returning mock data:', err.message)
-    return getMockSystemInfo()
+    if (import.meta.env.DEV && isSimulationMode) return getMockSystemInfo()
+    throw err
   }
 }
 
@@ -86,10 +86,15 @@ export async function apiScanWiFiNetworks() {
   }
 
   try {
-    return await fetchWithTimeout(API_ENDPOINTS.WIFI_SCAN)
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const result = await fetchWithTimeout(API_ENDPOINTS.WIFI_SCAN)
+      if (result.status !== 'scanning') return result
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    throw new Error('WiFi scan timed out')
   } catch (err) {
-    console.warn('[API] WiFi scan failed, returning mock networks:', err.message)
-    return { networks: getMockWifiNetworks() }
+    if (import.meta.env.DEV && isSimulationMode) return { networks: getMockWifiNetworks() }
+    throw err
   }
 }
 
@@ -152,8 +157,8 @@ export async function apiGetDnsConfig() {
   try {
     return await fetchWithTimeout(API_ENDPOINTS.DNS_GET)
   } catch (err) {
-    console.warn('[API] DNS get failed, fallback to mock:', err.message)
-    return getMockDnsConfig()
+    if (import.meta.env.DEV && isSimulationMode) return getMockDnsConfig()
+    throw err
   }
 }
 
@@ -177,7 +182,8 @@ export async function apiGetDnsQueries() {
   try {
     return await fetchWithTimeout(API_ENDPOINTS.DNS_QUERIES)
   } catch (err) {
-    return getMockDnsQueries()
+    if (import.meta.env.DEV && isSimulationMode) return getMockDnsQueries()
+    throw err
   }
 }
 
@@ -235,7 +241,8 @@ export async function apiGetDevices() {
   try {
     return await fetchWithTimeout(API_ENDPOINTS.DEVICES)
   } catch (err) {
-    return getMockDevices()
+    if (import.meta.env.DEV && isSimulationMode) return getMockDevices()
+    throw err
   }
 }
 
@@ -277,7 +284,8 @@ export async function apiGetGuestLimits() {
   try {
     return await fetchWithTimeout(API_ENDPOINTS.GUEST_LIMIT_GET)
   } catch (err) {
-    return getMockGuestLimits()
+    if (import.meta.env.DEV && isSimulationMode) return getMockGuestLimits()
+    throw err
   }
 }
 
@@ -325,8 +333,8 @@ export async function apiFetchGuestAnalytics() {
   try {
     return await fetchWithTimeout(API_ENDPOINTS.GUEST_ANALYTICS)
   } catch (err) {
-    console.warn('[API] Guest analytics failed, using fallback:', err.message)
-    return getMockGuestAnalytics()
+    if (import.meta.env.DEV && isSimulationMode) return getMockGuestAnalytics()
+    throw err
   }
 }
 
@@ -388,7 +396,8 @@ export async function apiFetchSession() {
   try {
     return await fetchWithTimeout(API_ENDPOINTS.SESSION)
   } catch (err) {
-    return getMockSession()
+    if (import.meta.env.DEV && isSimulationMode) return getMockSession()
+    throw err
   }
 }
 
@@ -398,8 +407,10 @@ export async function apiFetchLastLog() {
   }
   try {
     const res = await fetch(API_ENDPOINTS.LASTLOG)
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}: ${res.statusText}`)
     return await res.text()
   } catch (err) {
-    return getMockLastLog()
+    if (import.meta.env.DEV && isSimulationMode) return getMockLastLog()
+    throw err
   }
 }

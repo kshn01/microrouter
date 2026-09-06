@@ -218,7 +218,7 @@ This runs:
 - Vitest unit tests for simulator state, telemetry, and OUI recognition.
 - Vitest integration tests for frontend-to-firmware API contracts and route coverage.
 - Playwright Chromium tests for navigation and WiFi scan rendering.
-- PlatformIO native C++ unit tests for backend scheduler policy boundaries.
+- PlatformIO native C++ unit tests for scheduler boundaries, DNS policy matching, and WiFi scan filtering.
 - PlatformIO builds for both `serial` and `ota` firmware environments.
 
 Run individual layers when iterating:

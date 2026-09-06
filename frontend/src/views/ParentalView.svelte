@@ -30,6 +30,8 @@
   let loading = $state(true)
   let savingCurfew = $state(false)
   let savingQuota = $state(false)
+  let curfewDirty = $state(false)
+  let quotaDirty = $state(false)
   let pollInterval = null
 
   let limits = $state({
@@ -64,7 +66,21 @@
         apiGetDevices()
       ])
       if (limitRes) {
-        limits = { ...limits, ...limitRes }
+        limits = {
+          ...limits,
+          ...limitRes,
+          ...(curfewDirty ? {
+            curfewEnabled: limits.curfewEnabled,
+            startHour: limits.startHour,
+            startMin: limits.startMin,
+            endHour: limits.endHour,
+            endMin: limits.endMin,
+          } : {}),
+          ...(quotaDirty ? {
+            dailyQuotaMB: limits.dailyQuotaMB,
+            hourlyQuotaMB: limits.hourlyQuotaMB,
+          } : {}),
+        }
       }
       if (devRes && devRes.devices) {
         waivedDevices = devRes.devices.filter(
@@ -81,14 +97,19 @@
   async function handleSaveCurfew() {
     savingCurfew = true
     try {
-      await apiSetGuestLimits({
+      const res = await apiSetGuestLimits({
         curfewEnabled: limits.curfewEnabled,
         startHour: parseInt(limits.startHour, 10),
         startMin: parseInt(limits.startMin, 10),
         endHour: parseInt(limits.endHour, 10),
         endMin: parseInt(limits.endMin, 10),
       })
-      showToast('Curfew schedule successfully updated', 'success')
+      curfewDirty = false
+      if (res?.routerSynced === false) {
+        showToast('Curfew saved, but strict router DNS could not be enabled', 'warning')
+      } else {
+        showToast('Curfew schedule successfully updated', 'success')
+      }
       await loadData()
     } catch (err) {
       showToast('Failed to save curfew: ' + err.message, 'error')
@@ -104,6 +125,7 @@
         parseInt(limits.dailyQuotaMB, 10),
         parseInt(limits.hourlyQuotaMB, 10)
       )
+      quotaDirty = false
       showToast('Bandwidth quotas successfully saved', 'success')
       await loadData()
     } catch (err) {
@@ -179,7 +201,7 @@
         <div>
           <span class="font-bold text-sm text-white block">Curfew Restriction is Active</span>
           <span class="text-xs text-amber-200/80">
-            Guest stations are blocked from WAN internet access until {formatTimeDigits(limits.endHour, limits.endMin)}.
+            Guest stations are blocked by MicroRouter DNS until {formatTimeDigits(limits.endHour, limits.endMin)}.
           </span>
         </div>
       </div>
@@ -255,6 +277,7 @@
             id="curfew-toggle"
             type="checkbox"
             bind:checked={limits.curfewEnabled}
+            oninput={() => (curfewDirty = true)}
             class="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
           />
         </div>
@@ -262,7 +285,7 @@
 
       <div class="flex flex-col gap-5 text-xs">
         <p class="text-slate-400 leading-relaxed">
-          Specify the nightly timeframe when guest stations should be disconnected from the WAN. The MicroRouter ESP32 evaluates this continuously against synced NTP real-time clocks.
+          Specify the nightly timeframe when Guest stations should lose DNS access. The MicroRouter ESP32 evaluates this continuously against synced NTP real-time clocks.
         </p>
 
         <div class="grid grid-cols-2 gap-4">
@@ -278,6 +301,7 @@
                 min="0"
                 max="23"
                 bind:value={limits.startHour}
+                oninput={() => (curfewDirty = true)}
                 class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
               />
               <span class="text-slate-400 font-bold">:</span>
@@ -286,6 +310,7 @@
                 min="0"
                 max="59"
                 bind:value={limits.startMin}
+                oninput={() => (curfewDirty = true)}
                 class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
               />
               <span class="text-slate-400 text-[11px]">(HH:MM)</span>
@@ -304,6 +329,7 @@
                 min="0"
                 max="23"
                 bind:value={limits.endHour}
+                oninput={() => (curfewDirty = true)}
                 class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
               />
               <span class="text-slate-400 font-bold">:</span>
@@ -312,6 +338,7 @@
                 min="0"
                 max="59"
                 bind:value={limits.endMin}
+                oninput={() => (curfewDirty = true)}
                 class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
               />
               <span class="text-slate-400 text-[11px]">(HH:MM)</span>
@@ -368,6 +395,7 @@
               id="daily-quota"
               type="number"
               bind:value={limits.dailyQuotaMB}
+              oninput={() => (quotaDirty = true)}
               class="w-full bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-white focus:outline-none focus:border-indigo-500"
             />
           </div>
@@ -380,6 +408,7 @@
               id="hourly-quota"
               type="number"
               bind:value={limits.hourlyQuotaMB}
+              oninput={() => (quotaDirty = true)}
               class="w-full bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-white focus:outline-none focus:border-indigo-500"
             />
           </div>

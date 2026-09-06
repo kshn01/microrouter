@@ -16,7 +16,7 @@
   let fsPercent = $derived(
     $systemInfo && $systemInfo.fsTotalBytes > 0
       ? Math.round(($systemInfo.fsUsedBytes / $systemInfo.fsTotalBytes) * 100)
-      : 5
+      : 0
   )
 </script>
 
@@ -59,27 +59,27 @@
       <div class="flex flex-col divide-y divide-white/5 text-sm">
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Processor Model</span>
-          <span class="font-semibold text-white">{$systemInfo?.chipModel || 'ESP32-S3 (Dual-Core)'}</span>
+          <span class="font-semibold text-white">{$systemInfo?.chipModel || '—'}</span>
         </div>
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Silicon Revision</span>
-          <span class="font-mono text-white">v{$systemInfo?.chipRevision || '0.1'}</span>
+          <span class="font-mono text-white">{$systemInfo?.chipRevision ? `v${$systemInfo.chipRevision}` : '—'}</span>
         </div>
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Core Architecture</span>
-          <span class="text-white">Xtensa® LX7 32-bit (2 Cores)</span>
+          <span class="text-white">{$systemInfo?.cpuCores ? `Xtensa LX7 32-bit (${ $systemInfo.cpuCores } Cores)` : '—'}</span>
         </div>
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">CPU Clock Speed</span>
-          <span class="font-mono text-indigo-400 font-semibold">{$systemInfo?.cpuFreqMHz || 240} MHz</span>
+          <span class="font-mono text-indigo-400 font-semibold">{$systemInfo?.cpuFreqMHz ? `${$systemInfo.cpuFreqMHz} MHz` : '—'}</span>
         </div>
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Quad-SPI Flash Size</span>
-          <span class="font-mono text-white">{$systemInfo?.flashSizeMB || 8} MB</span>
+          <span class="font-mono text-white">{$systemInfo?.flashSizeMB ? `${$systemInfo.flashSizeMB} MB` : '—'}</span>
         </div>
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Factory Base MAC</span>
-          <span class="font-mono text-slate-300">{$systemInfo?.macAddress || '7C:DF:A1:04:88:EC'}</span>
+          <span class="font-mono text-slate-300">{$systemInfo?.macAddress || '—'}</span>
         </div>
       </div>
     </Card>
@@ -96,7 +96,7 @@
         <div>
           <ProgressBar
             label="LittleFS Web Partition"
-            valueText="{formatBytes($systemInfo?.fsUsedBytes || 94208)} / {formatBytes($systemInfo?.fsTotalBytes || 2031616)} ({fsPercent}%)"
+            valueText={$systemInfo ? `${formatBytes($systemInfo.fsUsedBytes)} / ${formatBytes($systemInfo.fsTotalBytes)} (${fsPercent}%)` : '—'}
             percent={fsPercent}
             color="indigo"
           />
@@ -107,7 +107,7 @@
         <div>
           <ProgressBar
             label="SRAM Heap Allocation"
-            valueText="{formatBytes($totalHeap - $freeHeap)} / {formatBytes($totalHeap)} ({100 - $heapPercent}%)"
+            valueText={$systemInfo ? `${formatBytes($totalHeap - $freeHeap)} / ${formatBytes($totalHeap)} (${100 - $heapPercent}%)` : '—'}
             percent={100 - $heapPercent}
             color="cyan"
           />
@@ -117,7 +117,7 @@
         <div class="p-3 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between text-xs mt-2">
           <span class="text-slate-400">Lowest Free RAM Watermark</span>
           <span class="font-mono font-semibold text-emerald-400">
-            {formatBytes($systemInfo?.minFreeHeap || 182400)}
+            {$systemInfo ? formatBytes($systemInfo.minFreeHeap) : '—'}
           </span>
         </div>
       </div>

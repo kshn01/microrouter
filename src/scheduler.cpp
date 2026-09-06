@@ -124,6 +124,17 @@ bool Scheduler::hasActiveWaiver(const String& mac) const {
     return false;
 }
 
+uint32_t Scheduler::getWaiverRemainingSecs(const String& mac) const {
+    time_t now = time(nullptr);
+    for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {
+        if (_waivers[i].active && strcasecmp(_waivers[i].mac, mac.c_str()) == 0 &&
+            _waivers[i].expireEpoch > now) {
+            return (uint32_t)(_waivers[i].expireEpoch - now);
+        }
+    }
+    return 0;
+}
+
 void Scheduler::_checkExpirations() {
     time_t now = time(nullptr);
     bool changed = false;

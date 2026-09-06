@@ -2,10 +2,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  apiBlockDevice,
+  apiClearDnsQueries,
+  apiClearGuestUsage,
+  apiDeleteGuestAnalytics,
+  apiFetchGuestAnalytics,
+  apiFetchLastLog,
   apiGetDnsConfig,
+  apiGetDnsQueries,
+  apiGetDevices,
+  apiGetGuestLimits,
+  apiGetRouterDns,
+  apiRebootRouter,
   apiScanWiFiNetworks,
+  apiSetDeviceWaiver,
   apiSetGuestLimits,
   apiSetGuestQuota,
+  apiSetRouterDns,
+  apiToggleSsid,
+  apiToggleWifi,
 } from '../../src/services/api.service.js'
 
 function jsonResponse(body) {
@@ -74,5 +89,67 @@ describe('API service integration contracts', () => {
     await expect(apiScanWiFiNetworks()).resolves.toEqual({
       networks: [{ ssid: 'Home', channel: 6, rssi: -40 }],
     })
+  })
+
+  it.each([
+    [apiGetDnsQueries, '/api/dns/queries'],
+    [apiGetRouterDns, '/api/router/dns/get'],
+    [apiGetDevices, '/api/devices'],
+    [apiGetGuestLimits, '/api/guest/limit/get'],
+    [apiFetchGuestAnalytics, '/api/guest/analytics'],
+  ])('calls GET endpoint %s', async (request, endpoint) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }))
+
+    await request()
+
+    expect(fetchMock.mock.calls[0][0]).toBe(endpoint)
+  })
+
+  it('sends device block and waiver commands', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }))
+
+    await apiBlockDevice('AA:BB:CC:DD:EE:FF', true)
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/device/block')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ mac: 'AA:BB:CC:DD:EE:FF' })
+
+    await apiSetDeviceWaiver('AA:BB:CC:DD:EE:FF', 30)
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/device/waiver')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ mac: 'AA:BB:CC:DD:EE:FF', minutes: 30 })
+  })
+
+  it('sends analytics, DNS log, and guest usage commands', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }))
+
+    await apiDeleteGuestAnalytics('AA:BB:CC:DD:EE:FF')
+    await apiClearGuestUsage()
+    await apiClearDnsQueries()
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/guest/analytics/delete',
+      '/api/guest/quota/clear',
+      '/api/dns/queries/clear',
+    ])
+  })
+
+  it('sends router reboot, radio, SSID, and DNS commands', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }))
+
+    await apiRebootRouter(true)
+    await apiToggleWifi(false)
+    await apiToggleSsid(2, false)
+    await apiSetRouterDns({ profile: 'family' })
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/reboot?system=1',
+      '/api/wifi/toggle?on=0',
+      '/api/ssid/toggle?ssidIdx=2&enable=0',
+      '/api/router/dns/set',
+    ])
+  })
+
+  it('reads plain-text router logs', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, text: async () => '[System] OK' })
+
+    await expect(apiFetchLastLog()).resolves.toBe('[System] OK')
   })
 })
