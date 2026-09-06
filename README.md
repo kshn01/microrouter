@@ -35,7 +35,15 @@ You **do not** need to replace your existing home router or flash custom firmwar
 4. **Enforces Wi-Fi Curfews**: Automatically cuts off internet access for children's devices at bedtime using accurate NTP network time.
 5. **Modern Dashboard**: Manage everything from any phone, tablet, or laptop at `http://microrouter.local`.
 
-> 📘 **New to ESP32?** Read our step-by-step [Novice Setup Guide](SETUP_GUIDE.md) for pictures, router settings walkthroughs, and beginner tips.
+## 📚 Documentation Hub
+
+Choose the guide that fits your needs:
+
+| Guide | Best For | What's Inside |
+| :--- | :--- | :--- |
+| 🚀 **[User Onboarding Guide](USER_ONBOARDING_GUIDE.md)** | **Novices & Non-Techies** | Zero-jargon visual journey from unboxing to daily use, phone setup, and FAQ. |
+| ⚡ **[Hardware & Router Setup Guide](SETUP_GUIDE.md)** | **Hardware Makers & Users** | Step-by-step flashing, router DNS configuration, and device isolation. |
+| 🛠️ **[Developer Handbook](DEVELOPER_GUIDE.md)** | **Contributors & Coders** | Svelte 5 runes, C++ FreeRTOS tasks, ZTE XML API protocol, and tests. |
 
 ---
 
