@@ -1,0 +1,25 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+  "C_Cpp.default.compilerPath": "/Users/kishansuthar/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++",
+  "C_Cpp.default.intelliSenseMode": "gcc-arm",
+  "C_Cpp.intelliSenseEngine": "default",
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}",
+    "--query-driver=/Users/kishansuthar/.platformio/packages/toolchain-xtensa-esp32s3/bin/*",
+    "--background-index",
+    "--clang-tidy=false",
+    "--completion-style=detailed",
+    "--header-insertion=never"
+  ],
+  "clangd.fallbackFlags": [
+    "-std=gnu++11",
+    "-DESP32=1",
+    "-DARDUINO_ARCH_ESP32=1",
+    "-DARDUINO=10812",
+    "-DELEGANTOTA_USE_ASYNC_WEBSERVER=1"
+  ]
+}

@@ -1,0 +1,18 @@
+CompileFlags:
+  Remove:
+    - -mlongcalls
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -fno-jump-tables
+    - -freorder-blocks
+    - -Wno-error=unused-but-set-variable
+  Add:
+    - -DESP32=1
+    - -DARDUINO_ARCH_ESP32=1
+    - -DARDUINO=10812
+    - -DELEGANTOTA_USE_ASYNC_WEBSERVER=1
+Diagnostics:
+  UnusedIncludes: None
+  Suppress:
+    - drv_unknown_argument
+    - drv_unknown_argument_with_suggestion
