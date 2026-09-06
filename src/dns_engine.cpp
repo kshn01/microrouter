@@ -129,11 +129,7 @@ static bool isDomainBlockedByPolicy(const char* domain) {
 
 static inline bool isLocalDomain(const char* domain) {
     if (!domain) return false;
-    if (strcasecmp(domain, "microrouter.local") == 0 ||
-        strcasecmp(domain, "portal.home") == 0 ||
-        strcasecmp(domain, "antigravity.home") == 0) return true;
-    size_t len = strlen(domain);
-    if (len > 12 && strcasecmp(domain + len - 12, ".portal.home") == 0) return true;
+    if (strcasecmp(domain, "microrouter.local") == 0) return true;
     return false;
 }
 

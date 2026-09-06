@@ -788,9 +788,12 @@ bool ZteRouterClient::applyRouterDhcpDns(const String& primaryDns, const String&
         String currDns1 = extractXmlParaValue(currentXml, "DNSServer1");
         String currDns2 = extractXmlParaValue(currentXml, "DNSServer2");
         String currSrc  = extractXmlParaValue(currentXml, "DnsServerSource");
+        Serial.printf("[ROUTER-DHCP] Current router state: DNS1=%s DNS2=%s DnsServerSource=%s\n",
+                      currDns1.c_str(), currDns2.c_str(), currSrc.c_str());
+        Serial.printf("[ROUTER-DHCP] Target: DNS1=%s DNS2=%s DnsServerSource=0\n",
+                      primDns.c_str(), secDns.c_str());
         if (currSrc == "0" && currDns1 == primDns && currDns2 == secDns) {
-            Serial.printf("[ROUTER-DHCP] DHCP DNS already matches target (%s / %s, DnsServerSource=0). Skipping redundant POST.\n",
-                          primDns.c_str(), secDns.c_str());
+            Serial.printf("[ROUTER-DHCP] DHCP DNS already matches target. Skipping redundant POST.\n");
             _dnsSynced = true;
             _routerDnsPrimary = primDns;
             _routerDnsSecondary = secDns;
@@ -858,11 +861,33 @@ bool ZteRouterClient::applyRouterDhcpDns(const String& primaryDns, const String&
         bool ok = (resp.indexOf("SUCC") >= 0 || resp.indexOf("<IF_ERRORTYPE>SUCC</IF_ERRORTYPE>") >= 0);
         Serial.printf("[ROUTER-DHCP] Apply DHCP DNS (%s / %s, DnsServerSource=0): code=%d ok=%d\n",
                       primDns.c_str(), secDns.c_str(), code, ok);
+        Serial.printf("[ROUTER-DHCP] Response body (first 300 chars): %s\n", resp.substring(0, 300).c_str());
+
         if (ok) {
+            // Post-apply verification: re-read the router to confirm the change actually stuck
+            delay(1000); // Give router time to apply
+            String verifyToken = getLanIpv4ContextToken();
+            if (!verifyToken.isEmpty()) {
+                String verifyXml = routerGET("/?_type=menuData&_tag=Localnet_LanMgrIpv4_DHCPBasicCfg_lua.lua");
+                String vDns1 = extractXmlParaValue(verifyXml, "DNSServer1");
+                String vDns2 = extractXmlParaValue(verifyXml, "DNSServer2");
+                String vSrc  = extractXmlParaValue(verifyXml, "DnsServerSource");
+                Serial.printf("[ROUTER-DHCP] VERIFY: After apply → DNS1=%s DNS2=%s Src=%s\n",
+                              vDns1.c_str(), vDns2.c_str(), vSrc.c_str());
+                if (vDns1 != primDns || vDns2 != secDns) {
+                    Serial.printf("[ROUTER-DHCP] WARNING: Router says SUCC but change did NOT stick! DNS1=%s (wanted %s), DNS2=%s (wanted %s)\n",
+                                  vDns1.c_str(), primDns.c_str(), vDns2.c_str(), secDns.c_str());
+                    _dnsSynced = false;
+                    _lastLog = "Router DHCP DNS: SUCC but change rejected!";
+                    if (attempt == 0) { relogin(); continue; }
+                    if (_httpMutex) xSemaphoreGiveRecursive(_httpMutex);
+                    return false;
+                }
+            }
             _dnsSynced = true;
             _routerDnsPrimary = primDns;
             _routerDnsSecondary = secDns;
-            _lastLog = "Router DHCP DNS Applied: " + primDns + " / " + secDns;
+            _lastLog = "Router DHCP DNS Applied (Verified): " + primDns + " / " + secDns;
             if (_httpMutex) xSemaphoreGiveRecursive(_httpMutex);
             return true;
         }
@@ -1055,11 +1080,7 @@ void ZteRouterClient::syncRouterDnsAtBoot() {
     String ip = WiFi.localIP().toString();
     if (ip == "0.0.0.0" || ip.length() == 0) ip = "192.168.1.7";
 
-    // 1. Register ESP32 active IP as portal.home & antigravity.home in router local DNS
-    registerRouterLocalDomain("portal.home", ip);
-    registerRouterLocalDomain("antigravity.home", ip);
-
-    // 2. Read saved profile from NVS
+    // 1. Read saved profile from NVS
     Preferences prefs;
     prefs.begin("microrouter", true);
     String prof = prefs.getString("dns_prof", "ultra_fast");

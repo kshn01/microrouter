@@ -379,7 +379,7 @@
     </div>
 
     <!-- Active DNS Distribution Flow -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
       <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-1.5">
         <div class="flex items-center justify-between">
           <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">DHCP Option 6 (Primary)</span>
@@ -402,25 +402,6 @@
         <p class="text-[11px] text-slate-400 leading-snug">
           {routerDns.haMode ? 'Seamless failover: family never loses internet if ESP32 reboots or is unplugged.' : '100% of DNS queries must pass through ESP32 without upstream bypass.'}
         </p>
-      </div>
-
-      <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-1.5">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Local Host Domain</span>
-          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">Router DNS Table</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <a
-            href="http://portal.home"
-            target="_blank"
-            rel="noreferrer"
-            class="text-lg font-mono font-bold text-purple-300 hover:text-purple-200 transition-colors flex items-center gap-1.5"
-          >
-            portal.home
-            <ExternalLink class="w-3.5 h-3.5 opacity-70" />
-          </a>
-        </div>
-        <p class="text-[11px] text-slate-400 leading-snug">Accessible from any browser on your home network without typing an IP address.</p>
       </div>
     </div>
 
@@ -580,7 +561,7 @@
           </div>
 
           <div class="mt-2 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-300">
-            <strong>Local Hostnames:</strong> Queries for <span class="font-mono text-white">microrouter.local</span> and <span class="font-mono text-white">portal.home</span> are resolved internally on zero-heap memory.
+            <strong>Local Hostname:</strong> Queries for <span class="font-mono text-white">microrouter.local</span> are resolved internally on zero-heap memory.
           </div>
         </div>
       </Card>

@@ -301,6 +301,9 @@ void WebServer::_setupApiRoutes() {
             _handleRouterDnsSet(req, data, len);
         });
 
+    _server.on("/api/router/dns/verify", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleRouterDnsVerify(req); });
+
     _server.on("/api/guest/analytics", HTTP_GET,
         [this](AsyncWebServerRequest* req) { _handleGuestAnalytics(req); });
 
@@ -690,7 +693,6 @@ void WebServer::_handleRouterDnsGet(AsyncWebServerRequest* request) {
     doc["hybridDns"] = zteClient.isHaMode();
     doc["haMode"] = zteClient.isHaMode();
     doc["routerSynced"] = zteClient.isDnsSynced();
-    doc["localDomain"] = "portal.home";
 
     String out;
     serializeJson(doc, out);
@@ -732,10 +734,28 @@ void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* dat
     resp["hybridDns"] = zteClient.isHaMode();
     resp["haMode"] = zteClient.isHaMode();
     resp["routerSynced"] = ok;
-    resp["localDomain"] = "portal.home";
 
     String out;
     serializeJson(resp, out);
+    request->send(200, "application/json", out);
+}
+
+void WebServer::_handleRouterDnsVerify(AsyncWebServerRequest* request) {
+    String p, s;
+    int src = -1;
+    bool ok = zteClient.fetchRouterDhcpDnsSettings(p, s, src);
+
+    JsonDocument doc;
+    doc["ok"] = ok;
+    doc["live_dhcp_dns1"] = p;
+    doc["live_dhcp_dns2"] = s;
+    doc["live_dns_source"] = src;
+    doc["esp32_ip"] = _wifiMgr->getIP();
+    doc["cached_synced"] = zteClient.isDnsSynced();
+    doc["match"] = (p == _wifiMgr->getIP());
+
+    String out;
+    serializeJson(doc, out);
     request->send(200, "application/json", out);
 }
 
