@@ -207,6 +207,36 @@ pio run -e serial -t upload
 
 ---
 
+### Automated Tests
+
+From `frontend/`, run the complete suite:
+```bash
+npm run test:all
+```
+
+This runs:
+- Vitest unit tests for simulator state, telemetry, and OUI recognition.
+- Vitest integration tests for frontend-to-firmware API contracts and route coverage.
+- Playwright Chromium tests for navigation and WiFi scan rendering.
+- PlatformIO native C++ unit tests for backend scheduler policy boundaries.
+- PlatformIO builds for both `serial` and `ota` firmware environments.
+
+Run individual layers when iterating:
+```bash
+npm run test:unit
+npm run test:integration
+npm run test:e2e:install
+npm run test:e2e
+npm run test:backend
+npm run test:firmware
+```
+
+The E2E suite starts its own Vite server and uses mocked API responses, so it does
+not require an ESP32. Hardware-in-the-loop validation still requires a flashed
+board and a reachable router.
+
+---
+
 ### Wireless Updates (Over-The-Air / OTA)
 
 Once the device is installed near your router, you never need a USB cable again:

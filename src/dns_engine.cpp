@@ -348,6 +348,35 @@ static void dnsProxyTask(void* pvParameters) {
             continue;
         }
 
+        // Apply per-client access policy before forwarding to the upstream resolver.
+        // DNS is the gateway's existing WAN control point, so blocked clients receive
+        // a sinkhole response instead of an upstream answer.
+        if (deviceManager.isClientRestricted(String(clientIpStr))) {
+            memcpy(s_txBuf, s_rxBuf, qEnd);
+            s_txBuf[2] = 0x85;
+            s_txBuf[3] = 0x80;
+            s_txBuf[6] = 0x00; s_txBuf[7] = (qType == 1 && qClass == 1) ? 0x01 : 0x00;
+            s_txBuf[8] = 0x00; s_txBuf[9] = 0x00;
+            s_txBuf[10] = 0x00; s_txBuf[11] = 0x00;
+            int p = qEnd;
+            if (qType == 1 && qClass == 1) {
+                s_txBuf[p++] = 0xC0; s_txBuf[p++] = 0x0C;
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x01;
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x01;
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x3C;
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x04;
+                s_txBuf[p++] = 0; s_txBuf[p++] = 0; s_txBuf[p++] = 0; s_txBuf[p++] = 0;
+            }
+            sendto(serverSock, s_txBuf, p, 0, (struct sockaddr*)&clientAddr, clientAddrLen);
+            if (s_dnsMutex) xSemaphoreTake(s_dnsMutex, portMAX_DELAY);
+            s_totalQueries++;
+            s_queriesAnswered++;
+            s_queriesBlocked++;
+            if (s_dnsMutex) xSemaphoreGive(s_dnsMutex);
+            logQuery(qDomain, clientIpStr, DNS_STATUS_BLOCKED, 0, qType);
+            continue;
+        }
+
         // 4. Upstream Forwarding
         char primaryUp[16] = {0};
         char secondaryUp[16] = {0};
@@ -412,13 +441,19 @@ void DNSEngine::begin() {
     Preferences prefs;
     prefs.begin("microrouter", true);
     String savedProf = prefs.getString("dns_profile", "ultra_fast");
+    String savedCustomPrimary = prefs.getString("dns_custom_p", "");
+    String savedCustomSecondary = prefs.getString("dns_custom_s", "");
     s_blockMeta = prefs.getBool("dns_blk_meta", false);
     s_blockTiktok = prefs.getBool("dns_blk_tiktok", false);
     String savedCustom = prefs.getString("dns_blk_custom", "");
     strncpy(s_customBlockedDomains, savedCustom.c_str(), sizeof(s_customBlockedDomains) - 1);
     prefs.end();
 
-    setProfile(savedProf);
+    if (savedProf.equalsIgnoreCase("custom") && savedCustomPrimary.length() > 0) {
+        setCustomUpstreams(savedCustomPrimary, savedCustomSecondary);
+    } else {
+        setProfile(savedProf);
+    }
 
     s_dnsStartTime = millis();
 
@@ -459,7 +494,7 @@ void DNSEngine::getStats(DnsStatsSnapshot* outSnap) {
 bool DNSEngine::setProfile(const String& profileKey) {
     uint8_t profId = DNS_PROF_ULTRA_FAST;
     if (profileKey.equalsIgnoreCase("adguard")) profId = DNS_PROF_ADGUARD;
-    else if (profileKey.equalsIgnoreCase("family")) profId = DNS_PROF_FAMILY;
+    else if (profileKey.equalsIgnoreCase("family") || profileKey.equalsIgnoreCase("cloudflare_family")) profId = DNS_PROF_FAMILY;
 
     if (s_dnsMutex) xSemaphoreTake(s_dnsMutex, portMAX_DELAY);
     s_activeProfileId = profId;

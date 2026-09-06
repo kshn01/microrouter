@@ -17,7 +17,13 @@ export async function scanNetworks() {
   isScanning.set(true)
   try {
     const data = await apiScanWiFiNetworks()
-    const sorted = (data.networks || []).sort((a, b) => b.rssi - a.rssi)
+    const strongestBySsid = new Map()
+    for (const network of data.networks || []) {
+      if (!network.ssid || !network.channel || network.channel > 14) continue
+      const current = strongestBySsid.get(network.ssid)
+      if (!current || network.rssi > current.rssi) strongestBySsid.set(network.ssid, network)
+    }
+    const sorted = [...strongestBySsid.values()].sort((a, b) => b.rssi - a.rssi)
     scannedNetworks.set(sorted)
     showToast(`Discovered ${sorted.length} WiFi networks`, 'success')
     return sorted

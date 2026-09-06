@@ -120,13 +120,16 @@ String WiFiManager::scanNetworks() {
 
     if (n > 0) {
         for (int i = 0; i < n; i++) {
+            int channel = WiFi.channel(i);
+            String ssid = WiFi.SSID(i);
+            if (channel > 14 || ssid.length() == 0) continue;
             JsonObject net = networks.add<JsonObject>();
-            net["ssid"]     = WiFi.SSID(i);
+            net["ssid"]     = ssid;
             net["rssi"]     = WiFi.RSSI(i);
-            net["channel"]  = WiFi.channel(i);
+            net["channel"]  = channel;
             net["secure"]   = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
         }
-        doc["count"] = n;
+        doc["count"] = networks.size();
         WiFi.scanDelete();
     } else {
         doc["count"] = 0;

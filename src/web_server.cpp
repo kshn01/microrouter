@@ -496,11 +496,10 @@ void WebServer::_handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, siz
     String secondary = doc["customSecondary"].is<const char*>() ? doc["customSecondary"].as<String>() : (doc["secondary"].is<const char*>() ? doc["secondary"].as<String>() : "");
     bool haMode = doc["haMode"].is<bool>() ? doc["haMode"].as<bool>() : (doc["hybridDns"].is<bool>() ? doc["hybridDns"].as<bool>() : zteClient.isHaMode());
 
-    if (doc["profile"].is<const char*>()) {
-        dnsEngine.setProfile(profile);
-    }
-    if (primary.length() > 0) {
+    if (profile.equalsIgnoreCase("custom")) {
         dnsEngine.setCustomUpstreams(primary, secondary.length() > 0 ? secondary : "0.0.0.0");
+    } else {
+        dnsEngine.setProfile(profile);
     }
     if (doc["blockMeta"].is<bool>() || doc["blockTiktok"].is<bool>() || doc["customDomains"].is<const char*>()) {
         DnsShieldRules cur;
@@ -586,14 +585,19 @@ void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
     doc["endHour"]   = cs.endHour;
     doc["endMin"]    = cs.endMin;
     doc["activeNow"] = scheduler.isCurfewActive();
+    doc["curfewEnabled"] = cs.enabled;
+    doc["curfewActive"] = scheduler.isCurfewActive();
+    doc["currentTime"] = scheduler.getFormattedTime();
     doc["timeStr"]   = scheduler.getFormattedTime();
 
     QuotaLimits q;
     scheduler.getQuotas(&q);
     doc["hourlyEnabled"]   = q.hourlyEnabled;
     doc["hourlyLimitMb"]   = (uint32_t)(q.hourlyLimitBytes / (1024 * 1024));
+    doc["hourlyQuotaMB"]    = (uint32_t)(q.hourlyLimitBytes / (1024 * 1024));
     doc["dailyEnabled"]    = q.dailyEnabled;
     doc["dailyLimitMb"]    = (uint32_t)(q.dailyLimitBytes / (1024 * 1024));
+    doc["dailyQuotaMB"]     = (uint32_t)(q.dailyLimitBytes / (1024 * 1024));
     doc["timeEnabled"]     = q.timeEnabled;
     doc["dailyActiveMins"] = q.dailyActiveSecs / 60;
 
@@ -605,7 +609,7 @@ void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
 void WebServer::_handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
-        bool en = doc["enabled"] | false;
+        bool en = doc["enabled"] | (doc["curfewEnabled"] | false);
         int sH = doc["startHour"] | 23;
         int sM = doc["startMin"] | 0;
         int eH = doc["endHour"] | 6;
@@ -620,11 +624,13 @@ void WebServer::_handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, 
 void WebServer::_handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
-        uint64_t hMb = doc["hourlyLimitMb"] | 500;
-        uint64_t dMb = doc["dailyLimitMb"] | 2048;
+        uint64_t hMb = doc["hourlyLimitMb"] | (doc["hourlyQuotaMB"] | 500);
+        uint64_t dMb = doc["dailyLimitMb"] | (doc["dailyQuotaMB"] | 2048);
         uint32_t tm  = (doc["dailyActiveMins"] | 60) * 60;
-        scheduler.setQuotas(doc["hourlyEnabled"] | false, hMb * 1024 * 1024ULL,
-                            doc["dailyEnabled"] | false, dMb * 1024 * 1024ULL,
+        bool hourlyEnabled = doc["hourlyEnabled"] | (doc["hourlyQuotaMB"].is<uint64_t>() && hMb > 0);
+        bool dailyEnabled = doc["dailyEnabled"] | (doc["dailyQuotaMB"].is<uint64_t>() && dMb > 0);
+        scheduler.setQuotas(hourlyEnabled, hMb * 1024 * 1024ULL,
+                    dailyEnabled, dMb * 1024 * 1024ULL,
                             doc["timeEnabled"] | false, tm);
         request->send(200, "application/json", "{\"status\":\"ok\"}");
         return;

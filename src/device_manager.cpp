@@ -257,6 +257,27 @@ bool DeviceManager::isBlocked(const String& mac) const {
     return b;
 }
 
+bool DeviceManager::isClientRestricted(const String& ip) const {
+    if (ip.length() == 0) return false;
+
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    int idx = _findDeviceIndexByIp(ip);
+    if (idx < 0) {
+        if (_mutex) xSemaphoreGive(_mutex);
+        return false;
+    }
+
+    const ClientDevice& device = _devices[idx];
+    bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
+    bool restricted = device.blocked || (!hasWaiver && scheduler.isCurfewActive());
+    QuotaLimits quotas;
+    scheduler.getQuotas(&quotas);
+    if (!hasWaiver && quotas.hourlyEnabled && device.hourlyUsageBytes >= quotas.hourlyLimitBytes) restricted = true;
+    if (!hasWaiver && quotas.dailyEnabled && device.dailyUsageBytes >= quotas.dailyLimitBytes) restricted = true;
+    if (_mutex) xSemaphoreGive(_mutex);
+    return restricted;
+}
+
 void DeviceManager::_saveBlockedMacs() {
     Preferences prefs;
     if (prefs.begin("dev_block", false)) {

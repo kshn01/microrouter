@@ -290,7 +290,7 @@ export async function apiSetGuestLimits(limits) {
   return await fetchWithTimeout(API_ENDPOINTS.GUEST_LIMIT_SET, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(limits),
+    body: JSON.stringify({ ...limits, enabled: limits.curfewEnabled }),
   })
 }
 
@@ -303,7 +303,14 @@ export async function apiSetGuestQuota(dailyQuotaMB, hourlyQuotaMB) {
   return await fetchWithTimeout(API_ENDPOINTS.GUEST_QUOTA_SET, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dailyQuotaMB, hourlyQuotaMB }),
+    body: JSON.stringify({
+      dailyQuotaMB,
+      hourlyQuotaMB,
+      dailyLimitMb: dailyQuotaMB,
+      hourlyLimitMb: hourlyQuotaMB,
+      dailyEnabled: dailyQuotaMB > 0,
+      hourlyEnabled: hourlyQuotaMB > 0,
+    }),
   })
 }
 

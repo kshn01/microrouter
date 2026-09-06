@@ -62,7 +62,7 @@
 
   const profiles = [
     {
-      id: 'cloudflare',
+      id: 'ultra_fast',
       name: 'Cloudflare',
       desc: 'High speed Anycast & zero logging',
       primary: '1.1.1.1',
@@ -71,7 +71,7 @@
       color: 'indigo',
     },
     {
-      id: 'cloudflare_family',
+      id: 'family',
       name: 'Cloudflare Family',
       desc: 'Automatic malware & adult site blocking',
       primary: '1.1.1.3',
@@ -84,7 +84,7 @@
       name: 'AdGuard DNS',
       desc: 'Network-wide ads and tracker blocking',
       primary: '94.140.14.14',
-      secondary: '94.140.15.15',
+      secondary: '94.140.14.15',
       tag: 'AdBlock',
       color: 'purple',
     },

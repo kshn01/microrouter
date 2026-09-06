@@ -42,6 +42,7 @@ public:
 
     bool setBlocked(const String& mac, bool blocked);
     bool isBlocked(const String& mac) const;
+    bool isClientRestricted(const String& ip) const;
 
     String queryNetBIOS(const String& ipStr);
 

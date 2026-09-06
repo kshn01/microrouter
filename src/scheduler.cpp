@@ -1,4 +1,5 @@
 #include "scheduler.h"
+#include "scheduler_policy.h"
 #include "config.h"
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -208,12 +209,7 @@ bool Scheduler::isCurfewActive() const {
     int startMin = _curfew.startHour * 60 + _curfew.startMin;
     int endMin = _curfew.endHour * 60 + _curfew.endMin;
 
-    if (startMin <= endMin) {
-        return curMin >= startMin && curMin < endMin;
-    } else {
-        // Crosses midnight (e.g. 23:00 to 06:00)
-        return curMin >= startMin || curMin < endMin;
-    }
+    return isScheduleActive(_curfew.enabled, isTimeSynced(), curMin, startMin, endMin);
 }
 
 void Scheduler::getQuotas(QuotaLimits* outQuotas) const {
