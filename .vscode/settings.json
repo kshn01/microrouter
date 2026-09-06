@@ -4,12 +4,12 @@
     "*.css": "tailwindcss"
   },
   "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
-  "C_Cpp.default.compilerPath": "/Users/kishansuthar/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++",
+  "C_Cpp.default.compilerPath": "${userHome}/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++",
   "C_Cpp.default.intelliSenseMode": "gcc-arm",
   "C_Cpp.intelliSenseEngine": "default",
   "clangd.arguments": [
     "--compile-commands-dir=${workspaceFolder}",
-    "--query-driver=/Users/kishansuthar/.platformio/packages/toolchain-xtensa-esp32s3/bin/*",
+    "--query-driver=**/*xtensa*,${userHome}/.platformio/packages/toolchain-xtensa-esp32s3/bin/*",
     "--background-index",
     "--clang-tidy=false",
     "--completion-style=detailed",
