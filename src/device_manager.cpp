@@ -269,6 +269,9 @@ void DeviceManager::_archiveDayToHistory(const ClientDevice& device, uint32_t co
     }
 
     if (!rec) {
+        while (_guest7DayRecords.size() >= MAX_GUEST_HISTORY_RECORDS) {
+            _guest7DayRecords.erase(_guest7DayRecords.begin());
+        }
         Guest7DayRecord newRec;
         memset(&newRec, 0, sizeof(Guest7DayRecord));
         strncpy(newRec.mac, device.mac, sizeof(newRec.mac) - 1);
@@ -666,8 +669,12 @@ void DeviceManager::_loadGuestHistory() {
     if (prefs.begin("microrouter", true)) {
         size_t len = prefs.getBytesLength("g_7d");
         if (len > 0 && len % sizeof(Guest7DayRecord) == 0) {
-            _guest7DayRecords.resize(len / sizeof(Guest7DayRecord));
-            prefs.getBytes("g_7d", _guest7DayRecords.data(), len);
+            size_t count = len / sizeof(Guest7DayRecord);
+            if (count > MAX_GUEST_HISTORY_RECORDS) {
+                count = MAX_GUEST_HISTORY_RECORDS;
+            }
+            _guest7DayRecords.resize(count);
+            prefs.getBytes("g_7d", _guest7DayRecords.data(), count * sizeof(Guest7DayRecord));
             Serial.printf("[DeviceManager] Loaded %u 7-day history records from NVS.\n", (unsigned)_guest7DayRecords.size());
         }
         prefs.end();

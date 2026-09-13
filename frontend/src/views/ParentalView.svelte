@@ -114,6 +114,40 @@
     { label: 'Strict Exam', desc: '8:30 PM – 7:00 AM', sH: 20, sM: 30, eH: 7, eM: 0 },
   ]
 
+  const DAILY_QUOTA_PRESETS = [
+    { label: 'Unlimited', desc: 'No daily limit', value: 0 },
+    { label: '1 GB', desc: '1,024 MB', value: 1024 },
+    { label: '2 GB', desc: '2,048 MB', value: 2048 },
+    { label: '5 GB', desc: '5,120 MB', value: 5120 },
+  ]
+
+  const HOURLY_QUOTA_PRESETS = [
+    { label: 'Uncapped', desc: 'No hourly limit', value: 0 },
+    { label: '250 MB', desc: 'Quarter GB', value: 250 },
+    { label: '500 MB', desc: 'Half GB', value: 500 },
+    { label: '1 GB', desc: '1,024 MB', value: 1024 },
+  ]
+
+  function formatMbHuman(mb) {
+    const val = parseInt(mb, 10) || 0
+    if (val <= 0) return 'Unlimited'
+    if (val >= 1024) {
+      const gb = Math.round((val / 1024) * 10) / 10
+      return `${val.toLocaleString()} MB (~${gb} GB)`
+    }
+    return `${val.toLocaleString()} MB`
+  }
+
+  function applyDailyQuotaPreset(val) {
+    limits.dailyQuotaMB = val
+    quotaDirty = true
+  }
+
+  function applyHourlyQuotaPreset(val) {
+    limits.hourlyQuotaMB = val
+    quotaDirty = true
+  }
+
   let currentTimeMins = $derived.by(() => {
     if (!limits.currentTime || limits.currentTime === '--:--') return null
     const [h, m] = limits.currentTime.split(':')
@@ -589,68 +623,176 @@
     <!-- Bandwidth Quota Configuration -->
     <Card>
       <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+            <HardDrive class="w-5 h-5" />
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white tracking-tight">Bandwidth Quotas</h2>
+            <p class="text-[11px] text-slate-400">Daily and hourly data thresholds for protected clients</p>
+          </div>
+        </div>
+
         <div class="flex items-center gap-2">
-          <HardDrive class="w-5 h-5 text-indigo-400" />
-          <h2 class="text-base font-bold text-white tracking-tight">Bandwidth Quotas</h2>
+          {#if limits.dailyQuotaMB > 0}
+            <span class="px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-[11px] font-semibold">
+              {formatMbHuman(limits.dailyQuotaMB)} / day
+            </span>
+          {:else}
+            <span class="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono text-[11px] font-semibold">
+              Unlimited Daily
+            </span>
+          {/if}
         </div>
       </div>
 
       <div class="flex flex-col gap-4 text-xs">
         <!-- Daily Consumption Progress -->
-        <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-2">
+        <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-2.5">
           <div class="flex items-center justify-between text-[11px]">
-            <span class="text-slate-400">Total Guest Data Consumed Today</span>
-            <span class="font-mono text-white font-bold">{dailyUsageMB} MB / {limits.dailyQuotaMB} MB</span>
+            <div class="flex items-center gap-1.5 text-slate-400">
+              <Sliders class="w-3.5 h-3.5 text-indigo-400" />
+              <span>Today's Guest Fleet Consumption</span>
+            </div>
+            <div class="font-mono text-white font-semibold">
+              {#if limits.dailyQuotaMB > 0}
+                <span class="text-white font-bold">{dailyUsageMB} MB</span>
+                <span class="text-slate-400 font-normal"> / {limits.dailyQuotaMB} MB</span>
+                <span class="text-indigo-400 font-bold ml-1.5">({dailyUsagePercent}%)</span>
+              {:else}
+                <span class="text-white font-bold">{dailyUsageMB} MB</span>
+                <span class="text-emerald-400 ml-1.5 font-medium">(Uncapped)</span>
+              {/if}
+            </div>
           </div>
           <ProgressBar
             percent={dailyUsagePercent}
-            color={dailyUsagePercent > 80 ? 'rose' : 'indigo'}
+            color={dailyUsagePercent > 90 ? 'rose' : (dailyUsagePercent > 75 ? 'amber' : 'indigo')}
           />
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block font-semibold text-slate-300 mb-1.5" for="daily-quota">
-              Daily Limit (MB)
-            </label>
-            <input
-              id="daily-quota"
-              type="number"
-              bind:value={limits.dailyQuotaMB}
-              oninput={() => (quotaDirty = true)}
-              class="w-full bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-white focus:outline-none focus:border-indigo-500"
-            />
+        <!-- Quota Controls Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Daily Limit Panel -->
+          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="daily-quota">
+                <span>Daily Limit</span>
+              </label>
+              <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
+                {formatMbHuman(limits.dailyQuotaMB)}
+              </span>
+            </div>
+
+            <div class="relative flex items-center">
+              <input
+                id="daily-quota"
+                type="number"
+                min="0"
+                step="128"
+                bind:value={limits.dailyQuotaMB}
+                oninput={() => (quotaDirty = true)}
+                class="w-full bg-slate-900 border border-white/10 rounded-lg py-2 pl-3 pr-12 font-mono text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                placeholder="0 for unlimited"
+              />
+              <span class="absolute right-3 text-xs text-slate-400 font-mono pointer-events-none">
+                MB
+              </span>
+            </div>
+
+            <!-- Quick Presets -->
+            <div class="space-y-1">
+              <div class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+                Quick Presets:
+              </div>
+              <div class="grid grid-cols-4 gap-1.5">
+                {#each DAILY_QUOTA_PRESETS as p}
+                  <button
+                    type="button"
+                    onclick={() => applyDailyQuotaPreset(p.value)}
+                    class="py-1 px-1.5 rounded-lg text-center transition-all border {limits.dailyQuotaMB === p.value ? 'bg-indigo-600/30 border-indigo-500 text-white font-semibold' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/5 text-slate-300'}"
+                  >
+                    <div class="text-[11px] font-medium leading-tight">{p.label}</div>
+                  </button>
+                {/each}
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label class="block font-semibold text-slate-300 mb-1.5" for="hourly-quota">
-              Hourly Limit (MB)
-            </label>
-            <input
-              id="hourly-quota"
-              type="number"
-              bind:value={limits.hourlyQuotaMB}
-              oninput={() => (quotaDirty = true)}
-              class="w-full bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-white focus:outline-none focus:border-indigo-500"
-            />
+          <!-- Hourly Limit Panel -->
+          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="hourly-quota">
+                <span>Hourly Limit</span>
+              </label>
+              <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
+                {formatMbHuman(limits.hourlyQuotaMB)}
+              </span>
+            </div>
+
+            <div class="relative flex items-center">
+              <input
+                id="hourly-quota"
+                type="number"
+                min="0"
+                step="64"
+                bind:value={limits.hourlyQuotaMB}
+                oninput={() => (quotaDirty = true)}
+                class="w-full bg-slate-900 border border-white/10 rounded-lg py-2 pl-3 pr-12 font-mono text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                placeholder="0 for uncapped"
+              />
+              <span class="absolute right-3 text-xs text-slate-400 font-mono pointer-events-none">
+                MB
+              </span>
+            </div>
+
+            <!-- Quick Presets -->
+            <div class="space-y-1">
+              <div class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+                Quick Presets:
+              </div>
+              <div class="grid grid-cols-4 gap-1.5">
+                {#each HOURLY_QUOTA_PRESETS as p}
+                  <button
+                    type="button"
+                    onclick={() => applyHourlyQuotaPreset(p.value)}
+                    class="py-1 px-1.5 rounded-lg text-center transition-all border {limits.hourlyQuotaMB === p.value ? 'bg-indigo-600/30 border-indigo-500 text-white font-semibold' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/5 text-slate-300'}"
+                  >
+                    <div class="text-[11px] font-medium leading-tight">{p.label}</div>
+                  </button>
+                {/each}
+              </div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div class="flex justify-end pt-2">
-          <button
-            onclick={handleSaveQuota}
-            disabled={savingQuota}
-            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-colors disabled:opacity-50"
-          >
-            {#if savingQuota}
-              <RefreshCw class="w-3.5 h-3.5 animate-spin" />
-              Saving...
-            {:else}
-              <CheckCircle2 class="w-3.5 h-3.5" />
-              Save Quotas
-            {/if}
-          </button>
+      <!-- Card Action Footer -->
+      <div class="flex items-center justify-between pt-4 mt-4 border-t border-white/10">
+        <div class="text-[11px] text-slate-400">
+          {#if quotaDirty}
+            <span class="inline-flex items-center gap-1.5 text-amber-400 font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+              Unsaved quota changes
+            </span>
+          {:else}
+            <span class="text-slate-500">Bandwidth quotas synced</span>
+          {/if}
         </div>
+
+        <button
+          onclick={handleSaveQuota}
+          disabled={savingQuota}
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
+        >
+          {#if savingQuota}
+            <RefreshCw class="w-3.5 h-3.5 animate-spin" />
+            <span>Saving...</span>
+          {:else}
+            <CheckCircle2 class="w-3.5 h-3.5" />
+            <span>Save Quotas</span>
+          {/if}
+        </button>
       </div>
     </Card>
   </div>

@@ -91,6 +91,8 @@ private:
         DailyHistorySlot days[7];
     };
 
+    static constexpr size_t MAX_GUEST_HISTORY_RECORDS = 16;
+
     ClientDevice                _devices[MAX_TRACKED_DEVICES];
     size_t                      _deviceCount = 0;
     std::vector<Guest7DayRecord> _guest7DayRecords;

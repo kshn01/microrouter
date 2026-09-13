@@ -6,6 +6,7 @@
 #include <AsyncWebSocket.h>
 #include "wifi_manager.h"
 #include "ota_manager.h"
+#include "rate_limiter.h"
 
 // ╔══════════════════════════════════════════════════════════════╗
 // ║  WebServer — HTTP API + WebSocket + Static File Server      ║
@@ -78,9 +79,11 @@ private:
     void _onWsEvent(AsyncWebSocket* ws, AsyncWebSocketClient* client,
                     AwsEventType type, void* arg, uint8_t* data, size_t len);
     String _buildStatsJson();
+    bool _checkRateLimit(AsyncWebServerRequest* request);
 
     AsyncWebServer  _server{WEB_SERVER_PORT};
     AsyncWebSocket  _ws{WEBSOCKET_PATH};
+    RateLimiter     _rateLimiter;
     WiFiManager*    _wifiMgr = nullptr;
     OTAManager*     _otaMgr  = nullptr;
     unsigned long   _lastBroadcast = 0;

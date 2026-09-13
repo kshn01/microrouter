@@ -338,9 +338,20 @@ void WebServer::_setupApiRoutes() {
     Serial.println("[Web] API routes configured");
 }
 
+bool WebServer::_checkRateLimit(AsyncWebServerRequest* request) {
+    if (!request || !request->client()) return true;
+    uint32_t ip32 = (uint32_t)request->client()->remoteIP();
+    if (!_rateLimiter.allow(ip32, millis())) {
+        request->send(429, "application/json", "{\"status\":\"error\",\"message\":\"Rate limit exceeded\"}");
+        return false;
+    }
+    return true;
+}
+
 // ── System API Handlers ──────────────────────────────────────────
 
 void WebServer::_handleSystemInfo(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
 
     // Chip info
@@ -380,6 +391,7 @@ void WebServer::_handleSystemInfo(AsyncWebServerRequest* request) {
 }
 
 void WebServer::_handleSystemHealth(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
 
     doc["uptimeMs"]      = millis();
@@ -415,6 +427,7 @@ void WebServer::_handleSystemHealth(AsyncWebServerRequest* request) {
 }
 
 void WebServer::_handleSystemRestart(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     request->send(200, "application/json", "{\"status\":\"restarting\"}");
     _rebootPending = true;
     _rebootAt = millis() + 1000;
@@ -423,14 +436,17 @@ void WebServer::_handleSystemRestart(AsyncWebServerRequest* request) {
 // ── WiFi API Handlers ────────────────────────────────────────────
 
 void WebServer::_handleWiFiStatus(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     request->send(200, "application/json", _wifiMgr->getStatusJson());
 }
 
 void WebServer::_handleWiFiScan(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     request->send(200, "application/json", _wifiMgr->scanNetworks());
 }
 
 void WebServer::_handleWiFiConnect(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, data, len);
 
@@ -460,6 +476,7 @@ void WebServer::_handleWiFiConnect(AsyncWebServerRequest* request, uint8_t* data
 }
 
 void WebServer::_handleWiFiDisconnect(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     _wifiMgr->clearCredentials();
     request->send(200, "application/json", "{\"status\":\"disconnected\"}");
 
@@ -470,6 +487,7 @@ void WebServer::_handleWiFiDisconnect(AsyncWebServerRequest* request) {
 // ── DNS Shield Handlers ──────────────────────────────────────────
 
 void WebServer::_handleDnsGet(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     DnsStatsSnapshot snap;
     dnsEngine.getStats(&snap);
@@ -499,6 +517,7 @@ void WebServer::_handleDnsGet(AsyncWebServerRequest* request) {
 }
 
 void WebServer::_handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
         request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -540,10 +559,12 @@ void WebServer::_handleDnsSet(AsyncWebServerRequest* request, uint8_t* data, siz
 }
 
 void WebServer::_handleDnsQueries(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     request->send(200, "application/json", dnsEngine.getRecentQueriesJson());
 }
 
 void WebServer::_handleDnsQueriesClear(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     dnsEngine.clearQueryLog();
     request->send(200, "application/json", "{\"status\":\"cleared\"}");
 }
@@ -551,10 +572,12 @@ void WebServer::_handleDnsQueriesClear(AsyncWebServerRequest* request) {
 // ── Device Management Handlers ───────────────────────────────────
 
 void WebServer::_handleDevices(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     request->send(200, "application/json", deviceManager.getDevicesJson());
 }
 
 void WebServer::_handleDeviceBlock(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
@@ -569,6 +592,7 @@ void WebServer::_handleDeviceBlock(AsyncWebServerRequest* request, uint8_t* data
 }
 
 void WebServer::_handleDeviceAllow(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
@@ -583,6 +607,7 @@ void WebServer::_handleDeviceAllow(AsyncWebServerRequest* request, uint8_t* data
 }
 
 void WebServer::_handleDeviceWaiver(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
@@ -618,6 +643,7 @@ void WebServer::_handleDeviceWaiver(AsyncWebServerRequest* request, uint8_t* dat
 }
 
 void WebServer::_handleDeviceParental(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
@@ -635,6 +661,7 @@ void WebServer::_handleDeviceParental(AsyncWebServerRequest* request, uint8_t* d
 // ── Curfew & Quota Handlers ──────────────────────────────────────
 
 void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     CurfewSchedule cs;
     scheduler.getCurfew(&cs);
@@ -672,6 +699,7 @@ void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
 }
 
 void WebServer::_handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         bool en = doc["enabled"] | (doc["curfewEnabled"] | false);
@@ -719,6 +747,7 @@ void WebServer::_handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, 
 }
 
 void WebServer::_handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         uint64_t hMb = doc["hourlyLimitMb"] | (doc["hourlyQuotaMB"] | 500);
@@ -738,6 +767,7 @@ void WebServer::_handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, s
 // ── Router Gateway Parity Handlers ───────────────────────────────
 
 void WebServer::_handleRouterReboot(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     bool systemOnly = request->hasParam("system");
     bool ok = systemOnly ? true : zteClient.reboot();
     if (systemOnly) {
@@ -748,6 +778,7 @@ void WebServer::_handleRouterReboot(AsyncWebServerRequest* request) {
 }
 
 void WebServer::_handleRouterWifiToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     bool on = true;
     if (request->hasParam("on")) {
         on = (request->getParam("on")->value() == "1" || request->getParam("on")->value().equalsIgnoreCase("true"));
@@ -764,6 +795,7 @@ void WebServer::_handleRouterWifiToggle(AsyncWebServerRequest* request, uint8_t*
 }
 
 void WebServer::_handleRouterSsidToggle(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     int ssidIdx = 1;
     bool enable = true;
     if (request->hasParam("ssidIdx")) {
@@ -783,6 +815,7 @@ void WebServer::_handleRouterSsidToggle(AsyncWebServerRequest* request, uint8_t*
 }
 
 void WebServer::_handleRouterDnsGet(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     DnsStatsSnapshot stats;
     dnsEngine.getStats(&stats);
 
@@ -803,6 +836,7 @@ void WebServer::_handleRouterDnsGet(AsyncWebServerRequest* request) {
 }
 
 void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     String profile = "ultra_fast";
     String primary = "";
     String secondary = "";
@@ -849,6 +883,7 @@ void WebServer::_handleRouterDnsSet(AsyncWebServerRequest* request, uint8_t* dat
 }
 
 void WebServer::_handleRouterDnsVerify(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     String p, s;
     int src = -1;
     bool ok = zteClient.fetchRouterDhcpDnsSettings(p, s, src);
@@ -868,11 +903,13 @@ void WebServer::_handleRouterDnsVerify(AsyncWebServerRequest* request) {
 }
 
 void WebServer::_handleGuestAnalytics(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     String json = deviceManager.getGuestAnalyticsJson();
     request->send(200, "application/json", json);
 }
 
 void WebServer::_handleGuestAnalyticsDelete(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
     String mac = "";
     if (request->hasParam("mac")) {
         mac = request->getParam("mac")->value();
@@ -890,15 +927,18 @@ void WebServer::_handleGuestAnalyticsDelete(AsyncWebServerRequest* request, uint
 }
 
 void WebServer::_handleGuestQuotaClear(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     deviceManager.clearGuestUsage();
     request->send(200, "application/json", "{\"ok\":true}");
 }
 
 void WebServer::_handleLastLog(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     request->send(200, "text/plain", zteClient.getLastLog());
 }
 
 void WebServer::_handleSession(AsyncWebServerRequest* request) {
+    if (!_checkRateLimit(request)) return;
     JsonDocument doc;
     doc["sid"] = "active";
     doc["token"] = "session_token";

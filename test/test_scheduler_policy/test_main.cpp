@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "dns_policy.h"
+#include "rate_limiter.h"
 #include "restriction_policy.h"
 #include "scheduler_policy.h"
 #include "usage_policy.h"
@@ -109,6 +110,40 @@ void test_restriction_policy_quota_exceeded_restricts_device() {
     TEST_ASSERT_FALSE(evaluateClientRestriction(input));
 }
 
+void test_rate_limiter_burst_and_replenish() {
+    RateLimiter limiter(3, 2); // capacity 3, refill 2 per sec
+    uint32_t ip = 0xC0A80402; // 192.168.4.2
+
+    // First 3 requests should be allowed (burst)
+    TEST_ASSERT_TRUE(limiter.allow(ip, 1000));
+    TEST_ASSERT_TRUE(limiter.allow(ip, 1010));
+    TEST_ASSERT_TRUE(limiter.allow(ip, 1020));
+
+    // 4th request within the same 100ms should be throttled
+    TEST_ASSERT_FALSE(limiter.allow(ip, 1030));
+
+    // Fast-forward 1 second (should refill 2 tokens)
+    TEST_ASSERT_TRUE(limiter.allow(ip, 2030));
+    TEST_ASSERT_TRUE(limiter.allow(ip, 2040));
+    TEST_ASSERT_FALSE(limiter.allow(ip, 2050));
+}
+
+void test_rate_limiter_isolates_ips() {
+    RateLimiter limiter(2, 1);
+    uint32_t ip1 = 0xC0A80402;
+    uint32_t ip2 = 0xC0A80403;
+
+    // Exhaust IP1
+    TEST_ASSERT_TRUE(limiter.allow(ip1, 1000));
+    TEST_ASSERT_TRUE(limiter.allow(ip1, 1010));
+    TEST_ASSERT_FALSE(limiter.allow(ip1, 1020));
+
+    // IP2 must still have full burst tokens
+    TEST_ASSERT_TRUE(limiter.allow(ip2, 1020));
+    TEST_ASSERT_TRUE(limiter.allow(ip2, 1030));
+    TEST_ASSERT_FALSE(limiter.allow(ip2, 1040));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_disabled_schedule_is_inactive);
@@ -124,5 +159,7 @@ int main() {
     RUN_TEST(test_restriction_policy_non_parental_never_curfewed_or_throttled);
     RUN_TEST(test_restriction_policy_curfew_restricts_parental_device);
     RUN_TEST(test_restriction_policy_quota_exceeded_restricts_device);
+    RUN_TEST(test_rate_limiter_burst_and_replenish);
+    RUN_TEST(test_rate_limiter_isolates_ips);
     return UNITY_END();
 }
