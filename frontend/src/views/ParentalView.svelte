@@ -59,6 +59,85 @@
       : 0
   )
 
+  function format12Hour(hour, min) {
+    const h = parseInt(hour, 10) || 0
+    const m = parseInt(min, 10) || 0
+    const period = h >= 12 ? 'PM' : 'AM'
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return `${h12}:${String(m).padStart(2, '0')} ${period}`
+  }
+
+  function getCurfewDurationStr(startH, startM, endH, endM) {
+    const s = (parseInt(startH, 10) || 0) * 60 + (parseInt(startM, 10) || 0)
+    const e = (parseInt(endH, 10) || 0) * 60 + (parseInt(endM, 10) || 0)
+    let diff = e - s
+    if (diff < 0) diff += 1440
+    const hrs = Math.floor(diff / 60)
+    const mins = diff % 60
+    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs} hrs`
+  }
+
+  function toTimeString(h, m) {
+    return `${String(h || 0).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`
+  }
+
+  function handleStartTimeChange(e) {
+    const val = e.target.value
+    if (!val) return
+    const [h, m] = val.split(':')
+    limits.startHour = parseInt(h, 10) || 0
+    limits.startMin = parseInt(m, 10) || 0
+    curfewDirty = true
+  }
+
+  function handleEndTimeChange(e) {
+    const val = e.target.value
+    if (!val) return
+    const [h, m] = val.split(':')
+    limits.endHour = parseInt(h, 10) || 0
+    limits.endMin = parseInt(m, 10) || 0
+    curfewDirty = true
+  }
+
+  function applyPreset(sH, sM, eH, eM) {
+    limits.startHour = sH
+    limits.startMin = sM
+    limits.endHour = eH
+    limits.endMin = eM
+    curfewDirty = true
+  }
+
+  const PRESETS = [
+    { label: 'School Night', desc: '10:00 PM – 6:30 AM', sH: 22, sM: 0, eH: 6, eM: 30 },
+    { label: 'Early Bedtime', desc: '9:00 PM – 6:00 AM', sH: 21, sM: 0, eH: 6, eM: 0 },
+    { label: 'Teen Schedule', desc: '11:00 PM – 7:00 AM', sH: 23, sM: 0, eH: 7, eM: 0 },
+    { label: 'Strict Exam', desc: '8:30 PM – 7:00 AM', sH: 20, sM: 30, eH: 7, eM: 0 },
+  ]
+
+  let currentTimeMins = $derived.by(() => {
+    if (!limits.currentTime || limits.currentTime === '--:--') return null
+    const [h, m] = limits.currentTime.split(':')
+    const total = (parseInt(h, 10) || 0) * 60 + (parseInt(m, 10) || 0)
+    return Math.min(100, Math.max(0, Math.round((total / 1440) * 100)))
+  })
+
+  let timelineBlocks = $derived.by(() => {
+    const s = (parseInt(limits.startHour, 10) || 0) * 60 + (parseInt(limits.startMin, 10) || 0)
+    const e = (parseInt(limits.endHour, 10) || 0) * 60 + (parseInt(limits.endMin, 10) || 0)
+
+    if (s > e) {
+      const morningCurfewPct = (e / 1440) * 100
+      const daytimePct = ((s - e) / 1440) * 100
+      const nightCurfewPct = ((1440 - s) / 1440) * 100
+      return { isOvernight: true, morningCurfewPct, daytimePct, nightCurfewPct }
+    } else {
+      const prePct = (s / 1440) * 100
+      const curfewPct = ((e - s) / 1440) * 100
+      const postPct = ((1440 - e) / 1440) * 100
+      return { isOvernight: false, prePct, curfewPct, postPct }
+    }
+  })
+
   async function loadData() {
     try {
       const [limitRes, devRes] = await Promise.all([
@@ -263,104 +342,247 @@
   <!-- Settings Grid -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <!-- Curfew Window Schedule -->
-    <Card>
-      <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
-        <div class="flex items-center gap-2">
-          <Moon class="w-5 h-5 text-indigo-400" />
-          <h2 class="text-base font-bold text-white tracking-tight">Curfew Schedule (Bedtime)</h2>
+    <Card class="flex flex-col justify-between">
+      <div>
+        <!-- Card Header with iOS-style Switch -->
+        <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <Moon class="w-5 h-5" />
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-white tracking-tight">Curfew Schedule (Bedtime)</h2>
+              <p class="text-[11px] text-slate-400">Scheduled Wi-Fi and DNS blackout for protected stations</p>
+            </div>
+          </div>
+
+          <!-- Modern iOS Toggle Switch -->
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={limits.curfewEnabled}
+              onclick={() => { limits.curfewEnabled = !limits.curfewEnabled; curfewDirty = true; }}
+              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none {limits.curfewEnabled ? 'bg-indigo-600 shadow-[0_0_12px_rgba(99,102,241,0.5)]' : 'bg-slate-700'}"
+            >
+              <span class="sr-only">Enable Curfew</span>
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out {limits.curfewEnabled ? 'translate-x-5' : 'translate-x-0'}"
+              ></span>
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
-          <label class="text-xs text-slate-400 cursor-pointer" for="curfew-toggle">
-            {limits.curfewEnabled ? 'Enabled' : 'Disabled'}
-          </label>
-          <input
-            id="curfew-toggle"
-            type="checkbox"
-            bind:checked={limits.curfewEnabled}
-            oninput={() => (curfewDirty = true)}
-            class="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
-          />
+
+        <div class="flex flex-col gap-4 text-xs">
+          <!-- Real-Time Status Pill -->
+          {#if !limits.curfewEnabled}
+            <div class="p-3 rounded-xl bg-white/[0.03] border border-white/5 flex items-center gap-2.5 text-slate-400">
+              <AlertCircle class="w-4 h-4 text-slate-500 shrink-0" />
+              <span>Curfew is disabled. Protected devices have unrestricted 24/7 internet access.</span>
+            </div>
+          {:else if limits.curfewActive}
+            <div class="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-between gap-2 text-indigo-200">
+              <div class="flex items-center gap-2">
+                <Moon class="w-4 h-4 text-indigo-400 shrink-0" />
+                <span>
+                  <strong>Curfew Active Now:</strong> Internet access blocked until {format12Hour(limits.endHour, limits.endMin)}.
+                </span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono text-[10px] uppercase font-semibold">
+                Lock Active
+              </span>
+            </div>
+          {:else}
+            <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between gap-2 text-emerald-200">
+              <div class="flex items-center gap-2">
+                <Sun class="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong>Normal Access Active:</strong> Bedtime lockout starts tonight at {format12Hour(limits.startHour, limits.startMin)}.
+                </span>
+              </div>
+              <span class="text-slate-400 text-[11px] font-mono">
+                Router: {limits.currentTime || '--:--'}
+              </span>
+            </div>
+          {/if}
+
+          <!-- 24-Hour Visual Day Timeline -->
+          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
+            <div class="flex items-center justify-between text-[11px] font-medium text-slate-400">
+              <span class="flex items-center gap-1">
+                <Clock class="w-3.5 h-3.5 text-indigo-400" />
+                24-Hour Day Timeline
+              </span>
+              <span class="text-slate-300">
+                Duration: <strong class="text-white">{getCurfewDurationStr(limits.startHour, limits.startMin, limits.endHour, limits.endMin)}</strong>
+              </span>
+            </div>
+
+            <!-- Visual Bar -->
+            <div class="relative w-full h-7 rounded-lg overflow-hidden bg-slate-800 flex border border-white/5">
+              {#if timelineBlocks.isOvernight}
+                <!-- Morning Curfew Block (00:00 -> End) -->
+                <div
+                  class="h-full bg-indigo-950/80 border-r border-indigo-500/30 flex items-center justify-center text-[10px] font-mono text-indigo-300 transition-all duration-300"
+                  style="width: {timelineBlocks.morningCurfewPct}%"
+                  title="Bedtime Lock (until {format12Hour(limits.endHour, limits.endMin)})"
+                >
+                  {#if timelineBlocks.morningCurfewPct > 12}
+                    <Moon class="w-3 h-3 text-indigo-400" />
+                  {/if}
+                </div>
+
+                <!-- Daytime Unlocked Access (End -> Start) -->
+                <div
+                  class="h-full bg-emerald-500/15 flex items-center justify-center text-[10px] font-medium text-emerald-300 transition-all duration-300"
+                  style="width: {timelineBlocks.daytimePct}%"
+                  title="Internet Open"
+                >
+                  <span class="flex items-center gap-1">
+                    <Sun class="w-3 h-3 text-emerald-400" />
+                    {#if timelineBlocks.daytimePct > 25}
+                      <span>Open Access</span>
+                    {/if}
+                  </span>
+                </div>
+
+                <!-- Night Curfew Block (Start -> 24:00) -->
+                <div
+                  class="h-full bg-indigo-950/80 border-l border-indigo-500/30 flex items-center justify-center text-[10px] font-mono text-indigo-300 transition-all duration-300"
+                  style="width: {timelineBlocks.nightCurfewPct}%"
+                  title="Bedtime Lock (starts {format12Hour(limits.startHour, limits.startMin)})"
+                >
+                  {#if timelineBlocks.nightCurfewPct > 12}
+                    <Moon class="w-3 h-3 text-indigo-400" />
+                  {/if}
+                </div>
+              {:else}
+                <!-- Same-Day Curfew Blocks -->
+                <div class="h-full bg-emerald-500/15" style="width: {timelineBlocks.prePct}%"></div>
+                <div class="h-full bg-indigo-950/80 border-x border-indigo-500/30 flex items-center justify-center text-indigo-300" style="width: {timelineBlocks.curfewPct}%">
+                  <Moon class="w-3 h-3 text-indigo-400" />
+                </div>
+                <div class="h-full bg-emerald-500/15" style="width: {timelineBlocks.postPct}%"></div>
+              {/if}
+
+              <!-- Router Clock Pointer (if time is synced) -->
+              {#if currentTimeMins !== null}
+                <div
+                  class="absolute top-0 bottom-0 w-0.5 bg-amber-400 shadow-[0_0_8px_#fbbf24] z-10 transition-all duration-500"
+                  style="left: {currentTimeMins}%"
+                  title="Current Router Clock: {limits.currentTime}"
+                >
+                  <div class="absolute -top-1 -translate-x-1/2 w-2 h-2 rounded-full bg-amber-400"></div>
+                </div>
+              {/if}
+            </div>
+
+            <!-- Timeline Axis Labels -->
+            <div class="flex justify-between text-[10px] font-mono text-slate-500 px-0.5">
+              <span>12 AM</span>
+              <span>6 AM</span>
+              <span>12 PM</span>
+              <span>6 PM</span>
+              <span>12 AM</span>
+            </div>
+          </div>
+
+          <!-- Time Pickers Row -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Bedtime (Start) Card -->
+            <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/10 hover:border-indigo-500/30 transition-all space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5 text-indigo-400 font-semibold text-xs">
+                  <Moon class="w-4 h-4" />
+                  <span>Bedtime (Turn Off)</span>
+                </div>
+                <span class="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Night</span>
+              </div>
+
+              <div class="flex items-center justify-between gap-2 pt-1">
+                <div class="text-xl font-bold font-mono text-white tracking-tight">
+                  {format12Hour(limits.startHour, limits.startMin)}
+                </div>
+                <input
+                  type="time"
+                  value={toTimeString(limits.startHour, limits.startMin)}
+                  onchange={handleStartTimeChange}
+                  class="bg-slate-900 text-white text-xs border border-white/10 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer font-mono"
+                />
+              </div>
+            </div>
+
+            <!-- Wake-up (End) Card -->
+            <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/10 hover:border-emerald-500/30 transition-all space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5 text-emerald-400 font-semibold text-xs">
+                  <Sun class="w-4 h-4" />
+                  <span>Wake-up (Restore)</span>
+                </div>
+                <span class="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Morning</span>
+              </div>
+
+              <div class="flex items-center justify-between gap-2 pt-1">
+                <div class="text-xl font-bold font-mono text-white tracking-tight">
+                  {format12Hour(limits.endHour, limits.endMin)}
+                </div>
+                <input
+                  type="time"
+                  value={toTimeString(limits.endHour, limits.endMin)}
+                  onchange={handleEndTimeChange}
+                  class="bg-slate-900 text-white text-xs border border-white/10 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Preset Pills -->
+          <div class="space-y-1.5 pt-1">
+            <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Quick Schedules:
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {#each PRESETS as p}
+                <button
+                  type="button"
+                  onclick={() => applyPreset(p.sH, p.sM, p.eH, p.eM)}
+                  class="p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 text-left transition-all group"
+                >
+                  <div class="font-medium text-slate-200 group-hover:text-white text-[11px]">{p.label}</div>
+                  <div class="text-[10px] text-slate-400 font-mono mt-0.5">{p.desc}</div>
+                </button>
+              {/each}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="flex flex-col gap-5 text-xs">
-        <p class="text-slate-400 leading-relaxed">
-          Specify the nightly timeframe when Guest stations should lose DNS access. The MicroRouter ESP32 evaluates this continuously against synced NTP real-time clocks.
-        </p>
-
-        <div class="grid grid-cols-2 gap-4">
-          <!-- Start Time (Night) -->
-          <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-2">
-            <div class="flex items-center gap-2 text-indigo-400 font-semibold">
-              <Moon class="w-4 h-4" />
-              <span>Bedtime Lock (Night)</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                max="23"
-                bind:value={limits.startHour}
-                oninput={() => (curfewDirty = true)}
-                class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
-              />
-              <span class="text-slate-400 font-bold">:</span>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                bind:value={limits.startMin}
-                oninput={() => (curfewDirty = true)}
-                class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
-              />
-              <span class="text-slate-400 text-[11px]">(HH:MM)</span>
-            </div>
-          </div>
-
-          <!-- End Time (Morning) -->
-          <div class="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col gap-2">
-            <div class="flex items-center gap-2 text-emerald-400 font-semibold">
-              <Sun class="w-4 h-4" />
-              <span>Wake-up Unlock (Morning)</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                max="23"
-                bind:value={limits.endHour}
-                oninput={() => (curfewDirty = true)}
-                class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
-              />
-              <span class="text-slate-400 font-bold">:</span>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                bind:value={limits.endMin}
-                oninput={() => (curfewDirty = true)}
-                class="w-16 bg-slate-900 border border-white/10 rounded-lg p-2 font-mono text-center text-white focus:outline-none focus:border-indigo-500"
-              />
-              <span class="text-slate-400 text-[11px]">(HH:MM)</span>
-            </div>
-          </div>
+      <!-- Card Action Footer -->
+      <div class="flex items-center justify-between pt-4 mt-4 border-t border-white/10">
+        <div class="text-[11px] text-slate-400">
+          {#if curfewDirty}
+            <span class="inline-flex items-center gap-1 text-amber-400 font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+              Unsaved curfew changes
+            </span>
+          {:else}
+            <span class="text-slate-500">Curfew schedule synced</span>
+          {/if}
         </div>
 
-        <div class="flex justify-end pt-2">
-          <button
-            onclick={handleSaveCurfew}
-            disabled={savingCurfew}
-            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-colors disabled:opacity-50"
-          >
-            {#if savingCurfew}
-              <RefreshCw class="w-3.5 h-3.5 animate-spin" />
-              Saving...
-            {:else}
-              <CheckCircle2 class="w-3.5 h-3.5" />
-              Save Curfew
-            {/if}
-          </button>
-        </div>
+        <button
+          onclick={handleSaveCurfew}
+          disabled={savingCurfew}
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
+        >
+          {#if savingCurfew}
+            <RefreshCw class="w-3.5 h-3.5 animate-spin" />
+            <span>Saving...</span>
+          {:else}
+            <CheckCircle2 class="w-3.5 h-3.5" />
+            <span>Save Curfew</span>
+          {/if}
+        </button>
       </div>
     </Card>
 

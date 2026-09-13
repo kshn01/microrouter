@@ -5,6 +5,10 @@ import os
 def get_firmware_version():
     # 1. Try git tag / commit
     try:
+        try:
+            subprocess.run(["git", "fetch", "--tags", "-q"], timeout=2, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        except Exception:
+            pass
         tag = subprocess.check_output(["git", "describe", "--tags", "--always"], stderr=subprocess.DEVNULL).decode().strip()
         if tag:
             return tag.lstrip("v")
@@ -23,7 +27,7 @@ def get_firmware_version():
     except Exception:
         pass
 
-    return "1.0.3"
+    return "1.0.5"
 
 version = get_firmware_version()
 print(f"--> [Build] Auto-detected dynamic FIRMWARE_VERSION: {version}")

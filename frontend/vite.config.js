@@ -6,10 +6,13 @@ import { execSync } from 'child_process'
 
 function getGitVersion() {
   try {
+    try {
+      execSync('git fetch --tags -q', { timeout: 2000, stdio: 'ignore' })
+    } catch {}
     const tag = execSync('git describe --tags --always').toString().trim()
     return tag.replace(/^v/, '')
   } catch {
-    return '1.0.3'
+    return '1.0.5'
   }
 }
 
