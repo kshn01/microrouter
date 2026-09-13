@@ -328,25 +328,17 @@ static void dnsProxyTask(void* pvParameters) {
         }
 
         // Apply per-client access policy before forwarding to the upstream resolver.
-        // DNS is the gateway's existing WAN control point, so blocked clients receive
-        // a sinkhole response instead of an upstream answer.
+        // Return RFC NXDOMAIN (RCODE=3, Name Error) across all query types (A, AAAA, HTTPS)
+        // so client OS stacks immediately fail-stop and do not attempt dual-stack fallbacks.
         if (deviceManager.isClientRestricted(String(clientIpStr))) {
             memcpy(s_txBuf, s_rxBuf, qEnd);
-            s_txBuf[2] = 0x85;
-            s_txBuf[3] = 0x80;
-            s_txBuf[6] = 0x00; s_txBuf[7] = (qType == 1 && qClass == 1) ? 0x01 : 0x00;
+            s_txBuf[2] = 0x85; // QR=1, AA=1, RD=1
+            s_txBuf[3] = 0x83; // RA=1, RCODE=3 (NXDOMAIN)
+            s_txBuf[6] = 0x00; s_txBuf[7] = 0x00; // ANCOUNT = 0
             s_txBuf[8] = 0x00; s_txBuf[9] = 0x00;
             s_txBuf[10] = 0x00; s_txBuf[11] = 0x00;
-            int p = qEnd;
-            if (qType == 1 && qClass == 1) {
-                s_txBuf[p++] = 0xC0; s_txBuf[p++] = 0x0C;
-                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x01;
-                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x01;
-                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x3C;
-                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x04;
-                s_txBuf[p++] = 0; s_txBuf[p++] = 0; s_txBuf[p++] = 0; s_txBuf[p++] = 0;
-            }
-            sendto(serverSock, s_txBuf, p, 0, (struct sockaddr*)&clientAddr, clientAddrLen);
+            sendto(serverSock, s_txBuf, qEnd, 0, (struct sockaddr*)&clientAddr, clientAddrLen);
+
             if (s_dnsMutex) xSemaphoreTake(s_dnsMutex, portMAX_DELAY);
             s_totalQueries++;
             s_queriesAnswered++;

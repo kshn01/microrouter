@@ -205,6 +205,30 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
     if (mac.length() == 0) return;
 
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+
+    // If updating a genuine hardware MAC with an IP, clean up / merge any synthetic ("02:00:...") entry for this IP
+    if (!mac.startsWith("02:00:") && ip.length() > 0) {
+        for (size_t i = 0; i < _deviceCount; i++) {
+            if (strcmp(_devices[i].ip, ip.c_str()) == 0 && strncmp(_devices[i].mac, "02:00:", 6) == 0) {
+                int realIdx = _findDeviceIndex(mac);
+                if (realIdx < 0) {
+                    strncpy(_devices[i].mac, mac.c_str(), sizeof(_devices[i].mac) - 1);
+                    _devices[i].mac[sizeof(_devices[i].mac) - 1] = '\0';
+                } else {
+                    _devices[realIdx].dlBytes += _devices[i].dlBytes;
+                    _devices[realIdx].ulBytes += _devices[i].ulBytes;
+                    _devices[realIdx].hourlyUsageBytes += _devices[i].hourlyUsageBytes;
+                    _devices[realIdx].dailyUsageBytes += _devices[i].dailyUsageBytes;
+                    for (size_t j = i; j + 1 < _deviceCount; j++) {
+                        _devices[j] = _devices[j + 1];
+                    }
+                    _deviceCount--;
+                    i--;
+                }
+            }
+        }
+    }
+
     int idx = _findDeviceIndex(mac);
     uint32_t nowSec = millis() / 1000;
 
@@ -215,7 +239,12 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         uint64_t deltaBytes = byteCounterDelta(currentBytes, previousBytes);
         if (ip.length() > 0) strncpy(_devices[idx].ip, ip.c_str(), sizeof(_devices[idx].ip) - 1);
         if (hostname.length() > 0) strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
-        if (band.length() > 0) strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
+        if (band.length() > 0) {
+            strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
+            if (strcasecmp(band.c_str(), "Guest") == 0) {
+                _devices[idx].parentalControl = true;
+            }
+        }
         if (rssi != 0) _devices[idx].rssi = rssi;
         _devices[idx].online = online;
         if (dl > 0) _devices[idx].dlBytes = dl;
@@ -228,9 +257,13 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
     } else if (_deviceCount < MAX_TRACKED_DEVICES) {
         idx = _deviceCount++;
         strncpy(_devices[idx].mac, mac.c_str(), sizeof(_devices[idx].mac) - 1);
+        _devices[idx].mac[sizeof(_devices[idx].mac) - 1] = '\0';
         strncpy(_devices[idx].ip, ip.c_str(), sizeof(_devices[idx].ip) - 1);
+        _devices[idx].ip[sizeof(_devices[idx].ip) - 1] = '\0';
         strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
+        _devices[idx].hostname[sizeof(_devices[idx].hostname) - 1] = '\0';
         strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
+        _devices[idx].band[sizeof(_devices[idx].band) - 1] = '\0';
         _devices[idx].rssi = rssi;
         _devices[idx].online = online;
         _devices[idx].blocked = false;
@@ -326,10 +359,17 @@ int DeviceManager::_findDeviceIndex(const String& mac) const {
 }
 
 int DeviceManager::_findDeviceIndexByIp(const String& ip) const {
+    if (ip.length() == 0) return -1;
+    int syntheticIdx = -1;
     for (size_t i = 0; i < _deviceCount; i++) {
-        if (strcmp(_devices[i].ip, ip.c_str()) == 0) return i;
+        if (strcmp(_devices[i].ip, ip.c_str()) == 0) {
+            if (strncmp(_devices[i].mac, "02:00:", 6) != 0) {
+                return i;
+            }
+            if (syntheticIdx < 0) syntheticIdx = i;
+        }
     }
-    return -1;
+    return syntheticIdx;
 }
 
 bool DeviceManager::setBlocked(const String& mac, bool blocked) {
@@ -383,35 +423,39 @@ bool DeviceManager::isClientRestricted(const String& ip) const {
     if (ip.length() == 0) return false;
 
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
-    int idx = _findDeviceIndexByIp(ip);
-    if (idx < 0) {
-        if (_mutex) xSemaphoreGive(_mutex);
-        return false;
-    }
-
-    const ClientDevice& device = _devices[idx];
-    bool isGuest = strcasecmp(device.band, "Guest") == 0;
-    bool isTarget = device.parentalControl || isGuest;
-    bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
+    bool anyRestricted = false;
     QuotaLimits quotas;
     scheduler.getQuotas(&quotas);
+    bool isCurfew = scheduler.isCurfewActive();
 
-    ClientRestrictionInput input = {
-        .isBlocked           = device.blocked,
-        .isParentalTarget    = isTarget,
-        .hasActiveWaiver     = hasWaiver,
-        .isCurfewActive      = scheduler.isCurfewActive(),
-        .hourlyQuotaEnabled  = quotas.hourlyEnabled,
-        .dailyQuotaEnabled   = quotas.dailyEnabled,
-        .hourlyUsageBytes    = device.hourlyUsageBytes,
-        .hourlyLimitBytes    = quotas.hourlyLimitBytes,
-        .dailyUsageBytes     = device.dailyUsageBytes,
-        .dailyLimitBytes     = quotas.dailyLimitBytes,
-    };
+    for (size_t i = 0; i < _deviceCount; i++) {
+        if (strcmp(_devices[i].ip, ip.c_str()) == 0) {
+            const ClientDevice& device = _devices[i];
+            bool isGuest = strcasecmp(device.band, "Guest") == 0;
+            bool isTarget = device.parentalControl || isGuest;
+            bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
 
-    bool restricted = evaluateClientRestriction(input);
+            ClientRestrictionInput input = {
+                .isBlocked           = device.blocked,
+                .isParentalTarget    = isTarget,
+                .hasActiveWaiver     = hasWaiver,
+                .isCurfewActive      = isCurfew,
+                .hourlyQuotaEnabled  = quotas.hourlyEnabled,
+                .dailyQuotaEnabled   = quotas.dailyEnabled,
+                .hourlyUsageBytes    = device.hourlyUsageBytes,
+                .hourlyLimitBytes    = quotas.hourlyLimitBytes,
+                .dailyUsageBytes     = device.dailyUsageBytes,
+                .dailyLimitBytes     = quotas.dailyLimitBytes,
+            };
+
+            if (evaluateClientRestriction(input)) {
+                anyRestricted = true;
+                break;
+            }
+        }
+    }
     if (_mutex) xSemaphoreGive(_mutex);
-    return restricted;
+    return anyRestricted;
 }
 
 void DeviceManager::_saveBlockedMacs() {
@@ -571,6 +615,18 @@ String DeviceManager::getDevicesJson() const {
 
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
     for (size_t i = 0; i < _deviceCount; i++) {
+        // Skip synthetic MAC entries if a real hardware MAC exists for the same IP
+        if (strncmp(_devices[i].mac, "02:00:", 6) == 0) {
+            bool hasReal = false;
+            for (size_t j = 0; j < _deviceCount; j++) {
+                if (j != i && strcmp(_devices[j].ip, _devices[i].ip) == 0 && strncmp(_devices[j].mac, "02:00:", 6) != 0) {
+                    hasReal = true;
+                    break;
+                }
+            }
+            if (hasReal) continue;
+        }
+
         JsonObject d = allArr.add<JsonObject>();
         d["mac"]          = _devices[i].mac;
         d["ip"]           = _devices[i].ip;
