@@ -57,8 +57,10 @@ let mockDevices = [
     ip: '192.168.1.101',
     hostname: 'MacBook-Pro',
     netbios: 'MBP-WORK',
+    band: '5G',
     rssi: -48,
     isBlocked: false,
+    parentalControl: false,
     waiverSecRemaining: 0,
     rxBytes: 41258900,
     txBytes: 12480300,
@@ -69,8 +71,10 @@ let mockDevices = [
     ip: '192.168.1.102',
     hostname: 'Galaxy-S23',
     netbios: 'SAM-S23',
+    band: 'Guest',
     rssi: -62,
     isBlocked: false,
+    parentalControl: true,
     waiverSecRemaining: 0,
     rxBytes: 8521000,
     txBytes: 1940000,
@@ -81,8 +85,10 @@ let mockDevices = [
     ip: '192.168.1.103',
     hostname: 'Nintendo-Switch',
     netbios: '',
+    band: 'Guest',
     rssi: -71,
     isBlocked: false,
+    parentalControl: true,
     waiverSecRemaining: 1420, // 23 min remaining on waiver
     rxBytes: 154000000,
     txBytes: 8900000,
@@ -93,8 +99,10 @@ let mockDevices = [
     ip: '192.168.1.104',
     hostname: 'FireTV-Stick-4K',
     netbios: '',
+    band: '5G',
     rssi: -55,
     isBlocked: false,
+    parentalControl: false,
     waiverSecRemaining: 0,
     rxBytes: 310500000,
     txBytes: 4200000,
@@ -105,8 +113,10 @@ let mockDevices = [
     ip: '192.168.1.105',
     hostname: 'Tuya-Smart-Plug',
     netbios: '',
+    band: '2.4G',
     rssi: -79,
     isBlocked: false,
+    parentalControl: false,
     waiverSecRemaining: 0,
     rxBytes: 420000,
     txBytes: 280000,
@@ -117,8 +127,10 @@ let mockDevices = [
     ip: '192.168.1.106',
     hostname: 'Desktop-Gaming-PC',
     netbios: 'DESKTOP-RYZEN',
+    band: '5G',
     rssi: -52,
     isBlocked: true, // Blocked by admin
+    parentalControl: false,
     waiverSecRemaining: 0,
     rxBytes: 21900000,
     txBytes: 5200000,
@@ -215,14 +227,22 @@ export function getMockSystemInfo() {
     cpuCores: 2,
     cpuFreqMHz: 240,
     flashSizeMB: 8,
+    flashSpeedMHz: 80,
     fsUsedBytes: 94208,
     fsTotalBytes: 2031616,
     freeHeap: 198240,
     totalHeap: 327680,
     minFreeHeap: 182400,
+    partition: 'ota_0',
     activePartition: 'ota_0',
+    fwVersion: '1.0.0',
     firmwareVersion: '1.0.0',
+    sdkVersion: 'v4.4.7-2021r2',
+    sketchSize: 1201541,
+    sketchFree: 1944187,
     macAddress: '7C:DF:A1:04:88:EC',
+    psramSize: 0,
+    psramFree: 0,
   }
 }
 
@@ -300,6 +320,14 @@ export function setMockDeviceWaiver(mac, minutes) {
     dev.isBlocked = false
   }
   return { status: 'ok', mac, waiverSecRemaining: minutes * 60 }
+}
+
+export function setMockDeviceParental(mac, enabled) {
+  const dev = mockDevices.find(d => d.mac.toLowerCase() === mac.toLowerCase())
+  if (dev) {
+    dev.parentalControl = enabled
+  }
+  return { status: 'ok', mac, parentalControl: enabled }
 }
 
 // ═══════════════════════════════════════════════════════════════════

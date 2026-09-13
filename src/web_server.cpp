@@ -150,6 +150,8 @@ String WebServer::_buildStatsJson() {
     data["wifiRssi"]      = _wifiMgr->getRSSI();
     data["wifiSsid"]      = _wifiMgr->getSSID();
     data["wifiIp"]        = _wifiMgr->getIP();
+    data["wifiMac"]       = WiFi.macAddress();
+    data["wifiChannel"]   = (_wifiMgr->isConnected()) ? WiFi.channel() : WIFI_AP_CHANNEL;
     data["fwVersion"]     = FIRMWARE_VERSION;
     data["fwValidated"]   = _otaMgr->isFirmwareValidated();
     data["partition"]     = _otaMgr->getPartitionLabel();
@@ -248,6 +250,13 @@ void WebServer::_setupApiRoutes() {
         NULL,
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
             _handleDeviceWaiver(req, data, len);
+        });
+
+    _server.on("/api/device/parental", HTTP_POST,
+        [](AsyncWebServerRequest* req) {},
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleDeviceParental(req, data, len);
         });
 
     // ── Curfew & Quota Endpoints ─────────────────────────────────
@@ -354,6 +363,9 @@ void WebServer::_handleSystemInfo(AsyncWebServerRequest* request) {
     doc["psramFree"]     = ESP.getFreePsram();
 
     // LittleFS
+    doc["fsTotalBytes"]  = LittleFS.totalBytes();
+    doc["fsUsedBytes"]   = LittleFS.usedBytes();
+    // Legacy aliases for older frontend builds
     doc["fsTotal"]       = LittleFS.totalBytes();
     doc["fsUsed"]        = LittleFS.usedBytes();
 
@@ -547,6 +559,7 @@ void WebServer::_handleDeviceBlock(AsyncWebServerRequest* request, uint8_t* data
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
         bool ok = deviceManager.setBlocked(mac, true);
+        if (ok) scheduler.revokeWaiver(mac);
         request->send(ok ? 200 : 404, "application/json",
                       "{\"status\":\"" + String(ok ? "blocked" : "not_found") +
                       "\",\"mac\":\"" + mac + "\"}");
@@ -573,11 +586,47 @@ void WebServer::_handleDeviceWaiver(AsyncWebServerRequest* request, uint8_t* dat
     JsonDocument doc;
     if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
         String mac = doc["mac"].as<String>();
-        uint32_t secs = doc["durationSecs"] | 1800; // default 30 mins
+        uint32_t secs = 0;
+        bool hasDuration = false;
+
+        if (doc["durationSecs"].is<uint32_t>()) {
+            secs = doc["durationSecs"].as<uint32_t>();
+            hasDuration = true;
+        } else if (doc["minutes"].is<uint32_t>() || doc["minutes"].is<int>()) {
+            secs = doc["minutes"].as<uint32_t>() * 60;
+            hasDuration = true;
+        }
+
+        if (!hasDuration) {
+            secs = 1800; // default 30 mins if omitted
+        }
+
+        if (secs == 0) {
+            scheduler.revokeWaiver(mac);
+            request->send(200, "application/json",
+                          "{\"status\":\"waiver_revoked\",\"mac\":\"" + mac + "\"}");
+            return;
+        }
+
         scheduler.grantWaiver(mac, secs);
         request->send(200, "application/json",
                       "{\"status\":\"waiver_granted\",\"mac\":\"" + mac +
                       "\",\"durationSecs\":" + String(secs) + "}");
+        return;
+    }
+    request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+}
+
+void WebServer::_handleDeviceParental(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+        String mac = doc["mac"].as<String>();
+        bool enabled = doc["enabled"] | (doc["parentalControl"] | true);
+        bool ok = deviceManager.setParentalControl(mac, enabled);
+        request->send(ok ? 200 : 404, "application/json",
+                      "{\"status\":\"" + String(ok ? "ok" : "not_found") +
+                      "\",\"mac\":\"" + mac +
+                      "\",\"parentalControl\":" + String(enabled ? "true" : "false") + "}");
         return;
     }
     request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");

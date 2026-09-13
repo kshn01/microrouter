@@ -29,6 +29,7 @@ export const API_ENDPOINTS = {
   DEVICE_BLOCK: '/api/device/block',
   DEVICE_ALLOW: '/api/device/allow',
   DEVICE_WAIVER: '/api/device/waiver',
+  DEVICE_PARENTAL: '/api/device/parental',
 
   // Curfew & Parental Controls
   GUEST_LIMIT_GET: '/api/guest/limit/get',

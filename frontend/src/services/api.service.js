@@ -13,6 +13,7 @@ import {
   getMockDevices,
   blockMockDevice,
   setMockDeviceWaiver,
+  setMockDeviceParental,
   getMockGuestLimits,
   setMockGuestLimits,
   setMockGuestQuota,
@@ -206,7 +207,6 @@ export async function apiGetRouterDns() {
       hybridDns: true,
       haMode: true,
       routerSynced: true,
-      localDomain: 'portal.home',
     }
   }
   try {
@@ -263,13 +263,35 @@ export async function apiBlockDevice(mac, blocked) {
 export async function apiSetDeviceWaiver(mac, minutes) {
   if (import.meta.env.DEV && isSimulationMode) {
     await new Promise((r) => setTimeout(r, 300))
-    showToast(`Access waiver granted for ${minutes} min (Simulated)`, 'success')
+    if (minutes <= 0) {
+      showToast(`Access waiver revoked for ${mac} (Simulated)`, 'info')
+    } else {
+      showToast(`Access waiver granted for ${minutes} min (Simulated)`, 'success')
+    }
     return setMockDeviceWaiver(mac, minutes)
   }
   return await fetchWithTimeout(API_ENDPOINTS.DEVICE_WAIVER, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mac, minutes }),
+  })
+}
+
+export async function apiSetDeviceParental(mac, enabled) {
+  if (import.meta.env.DEV && isSimulationMode) {
+    await new Promise((r) => setTimeout(r, 250))
+    showToast(
+      enabled
+        ? `Enrolled ${mac} in Parental Controls (Simulated)`
+        : `Unenrolled ${mac} from Parental Controls (Simulated)`,
+      'info'
+    )
+    return setMockDeviceParental(mac, enabled)
+  }
+  return await fetchWithTimeout(API_ENDPOINTS.DEVICE_PARENTAL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mac, enabled }),
   })
 }
 

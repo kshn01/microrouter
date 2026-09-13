@@ -15,6 +15,7 @@ import {
   apiGetRouterDns,
   apiRebootRouter,
   apiScanWiFiNetworks,
+  apiSetDeviceParental,
   apiSetDeviceWaiver,
   apiSetGuestLimits,
   apiSetGuestQuota,
@@ -105,7 +106,7 @@ describe('API service integration contracts', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(endpoint)
   })
 
-  it('sends device block and waiver commands', async () => {
+  it('sends device block, waiver, and parental control commands', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }))
 
     await apiBlockDevice('AA:BB:CC:DD:EE:FF', true)
@@ -115,6 +116,10 @@ describe('API service integration contracts', () => {
     await apiSetDeviceWaiver('AA:BB:CC:DD:EE:FF', 30)
     expect(fetchMock.mock.calls[1][0]).toBe('/api/device/waiver')
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ mac: 'AA:BB:CC:DD:EE:FF', minutes: 30 })
+
+    await apiSetDeviceParental('AA:BB:CC:DD:EE:FF', true)
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/device/parental')
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ mac: 'AA:BB:CC:DD:EE:FF', enabled: true })
   })
 
   it('sends analytics, DNS log, and guest usage commands', async () => {

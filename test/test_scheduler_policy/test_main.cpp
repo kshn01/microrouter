@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "dns_policy.h"
+#include "restriction_policy.h"
 #include "scheduler_policy.h"
 #include "usage_policy.h"
 #include "wifi_scan_policy.h"
@@ -52,6 +53,62 @@ void test_usage_delta_handles_counter_reset() {
     TEST_ASSERT_EQUAL_UINT64(0, byteCounterDelta(4096, 4096));
 }
 
+void test_restriction_policy_blocked_device_always_restricted() {
+    ClientRestrictionInput input = {};
+    input.isBlocked = true;
+    input.hasActiveWaiver = true; // Even if waiver exists, manual block takes precedence
+    input.isParentalTarget = false;
+    TEST_ASSERT_TRUE(evaluateClientRestriction(input));
+}
+
+void test_restriction_policy_waiver_bypasses_curfew_and_quotas() {
+    ClientRestrictionInput input = {};
+    input.isBlocked = false;
+    input.hasActiveWaiver = true;
+    input.isParentalTarget = true;
+    input.isCurfewActive = true;
+    input.dailyQuotaEnabled = true;
+    input.dailyUsageBytes = 5000;
+    input.dailyLimitBytes = 1000;
+    TEST_ASSERT_FALSE(evaluateClientRestriction(input));
+}
+
+void test_restriction_policy_non_parental_never_curfewed_or_throttled() {
+    ClientRestrictionInput input = {};
+    input.isBlocked = false;
+    input.hasActiveWaiver = false;
+    input.isParentalTarget = false;
+    input.isCurfewActive = true;
+    input.dailyQuotaEnabled = true;
+    input.dailyUsageBytes = 999999;
+    input.dailyLimitBytes = 1000;
+    TEST_ASSERT_FALSE(evaluateClientRestriction(input));
+}
+
+void test_restriction_policy_curfew_restricts_parental_device() {
+    ClientRestrictionInput input = {};
+    input.isBlocked = false;
+    input.hasActiveWaiver = false;
+    input.isParentalTarget = true;
+    input.isCurfewActive = true;
+    TEST_ASSERT_TRUE(evaluateClientRestriction(input));
+}
+
+void test_restriction_policy_quota_exceeded_restricts_device() {
+    ClientRestrictionInput input = {};
+    input.isBlocked = false;
+    input.hasActiveWaiver = false;
+    input.isParentalTarget = true;
+    input.isCurfewActive = false;
+    input.dailyQuotaEnabled = true;
+    input.dailyUsageBytes = 2048;
+    input.dailyLimitBytes = 1024;
+    TEST_ASSERT_TRUE(evaluateClientRestriction(input));
+
+    input.dailyUsageBytes = 512;
+    TEST_ASSERT_FALSE(evaluateClientRestriction(input));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_disabled_schedule_is_inactive);
@@ -62,5 +119,10 @@ int main() {
     RUN_TEST(test_dns_special_domains_are_case_insensitive);
     RUN_TEST(test_wifi_scan_policy_accepts_only_visible_24ghz_results);
     RUN_TEST(test_usage_delta_handles_counter_reset);
+    RUN_TEST(test_restriction_policy_blocked_device_always_restricted);
+    RUN_TEST(test_restriction_policy_waiver_bypasses_curfew_and_quotas);
+    RUN_TEST(test_restriction_policy_non_parental_never_curfewed_or_throttled);
+    RUN_TEST(test_restriction_policy_curfew_restricts_parental_device);
+    RUN_TEST(test_restriction_policy_quota_exceeded_restricts_device);
     return UNITY_END();
 }

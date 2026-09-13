@@ -54,6 +54,7 @@ private:
     void _handleDeviceBlock(AsyncWebServerRequest* request, uint8_t* data, size_t len);
     void _handleDeviceAllow(AsyncWebServerRequest* request, uint8_t* data, size_t len);
     void _handleDeviceWaiver(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleDeviceParental(AsyncWebServerRequest* request, uint8_t* data, size_t len);
 
     // ── Curfew & Quota Handlers ──────────────────────────────────
     void _handleCurfewGet(AsyncWebServerRequest* request);

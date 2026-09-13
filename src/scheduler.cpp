@@ -38,9 +38,15 @@ void Scheduler::loop() {
         _checkExpirations();
 
         // Periodically verify NTP sync if not yet valid
-        if (!_ntpSynced && (nowMs - _lastNtpCheck > 30000)) {
-            _lastNtpCheck = nowMs;
-            _syncNTP();
+        if (!_ntpSynced) {
+            time_t now = time(nullptr);
+            if (now > 1700000000) {
+                _ntpSynced = true;
+                Serial.printf("[Scheduler] NTP synced: %s", ctime(&now));
+            } else if (nowMs - _lastNtpCheck > 30000) {
+                _lastNtpCheck = nowMs;
+                _syncNTP();
+            }
         }
     }
 }
@@ -56,7 +62,8 @@ void Scheduler::_syncNTP() {
 }
 
 bool Scheduler::isTimeSynced() const {
-    return _ntpSynced && time(nullptr) > 1700000000;
+    time_t now = time(nullptr);
+    return (_ntpSynced || now > 1700000000) && now > 1700000000;
 }
 
 time_t Scheduler::getEpoch() const {

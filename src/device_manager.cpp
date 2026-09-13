@@ -1,6 +1,7 @@
 #include "device_manager.h"
 #include "scheduler.h"
 #include "usage_policy.h"
+#include "restriction_policy.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -18,6 +19,7 @@ void DeviceManager::begin() {
     _netbiosScanIndex = 0;
 
     _loadBlockedMacs();
+    _loadParentalMacs();
     _loadGuestHistory();
     Serial.println("[DeviceManager] Initialized with active network discovery & ARP monitoring.");
 }
@@ -106,7 +108,7 @@ void DeviceManager::_scanSoftAPStations() {
                      esp_ip4_addr3(&station.ip),
                      esp_ip4_addr4(&station.ip));
 
-            updateDevice(macStr, ipStr, "", "2.4G", 0, true);
+            updateDevice(macStr, ipStr, "", "Guest", 0, true);
         }
     }
 }
@@ -119,7 +121,26 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
     if (WiFi.softAPIP().toString().equals(ip)) return;
 
     String mac = _resolveArpMac(ip);
-    if (mac.length() == 0) return;
+    if (mac.length() == 0) {
+        if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+        int existingIdx = _findDeviceIndexByIp(ip);
+        if (existingIdx >= 0) {
+            mac = _devices[existingIdx].mac;
+        }
+        if (_mutex) xSemaphoreGive(_mutex);
+    }
+
+    if (mac.length() == 0) {
+        // Synthesize a stable, locally-administered MAC from IPv4 octets
+        int o1, o2, o3, o4;
+        if (sscanf(ip, "%d.%d.%d.%d", &o1, &o2, &o3, &o4) == 4) {
+            char synMac[18];
+            snprintf(synMac, sizeof(synMac), "02:00:%02x:%02x:%02x:%02x", o1, o2, o3, o4);
+            mac = synMac;
+        } else {
+            return;
+        }
+    }
 
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
     int idx = _findDeviceIndex(mac);
@@ -130,8 +151,13 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
     uint32_t nowSec = millis() / 1000;
 
     if (idx >= 0) {
+        _rollUsageWindows(_devices[idx]);
         _devices[idx].online = true;
         _devices[idx].lastSeen = nowSec;
+        _devices[idx].dlBytes += 128; // Record telemetry packet transfer
+        _devices[idx].ulBytes += 64;
+        _devices[idx].hourlyUsageBytes += 192;
+        _devices[idx].dailyUsageBytes += 192;
 
         if (strlen(_devices[idx].ip) == 0 || strcmp(_devices[idx].ip, "0.0.0.0") == 0) {
             strncpy(_devices[idx].ip, ip, sizeof(_devices[idx].ip) - 1);
@@ -154,19 +180,21 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
         strncpy(_devices[idx].ip, ip, sizeof(_devices[idx].ip) - 1);
         _devices[idx].ip[sizeof(_devices[idx].ip) - 1] = '\0';
         _devices[idx].hostname[0] = '\0';
-        strcpy(_devices[idx].band, "2.4G");
+        bool isSoftApSubnet = (strncmp(ip, "192.168.4.", 10) == 0);
+        strcpy(_devices[idx].band, isSoftApSubnet ? "Guest" : "2.4G");
         _devices[idx].rssi = 0;
         _devices[idx].online = true;
         _devices[idx].blocked = false;
-        _devices[idx].dlBytes = 0;
-        _devices[idx].ulBytes = 0;
-        _devices[idx].hourlyUsageBytes = 0;
-        _devices[idx].dailyUsageBytes = 0;
+        _devices[idx].dlBytes = 128;
+        _devices[idx].ulBytes = 64;
+        _devices[idx].hourlyUsageBytes = 192;
+        _devices[idx].dailyUsageBytes = 192;
         _devices[idx].usageHourKey = 0;
         _devices[idx].usageDayKey = 0;
         _devices[idx].hourlyLimitHitCount = 0;
         _devices[idx].lastSeen = nowSec;
         _devices[idx].netbiosTries = 0;
+        _rollUsageWindows(_devices[idx]);
     }
     if (_mutex) xSemaphoreGive(_mutex);
 }
@@ -206,6 +234,7 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         _devices[idx].rssi = rssi;
         _devices[idx].online = online;
         _devices[idx].blocked = false;
+        _devices[idx].parentalControl = (strcasecmp(band.c_str(), "Guest") == 0);
         _devices[idx].dlBytes = dl;
         _devices[idx].ulBytes = ul;
         _devices[idx].hourlyUsageBytes = 0;
@@ -273,6 +302,31 @@ bool DeviceManager::isBlocked(const String& mac) const {
     return b;
 }
 
+bool DeviceManager::setParentalControl(const String& mac, bool enabled) {
+    bool found = false;
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    int idx = _findDeviceIndex(mac);
+    if (idx >= 0) {
+        _devices[idx].parentalControl = enabled;
+        found = true;
+    }
+    if (_mutex) xSemaphoreGive(_mutex);
+
+    _saveParentalMacs();
+    return found;
+}
+
+bool DeviceManager::isParentalControl(const String& mac) const {
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    int idx = _findDeviceIndex(mac);
+    bool enabled = false;
+    if (idx >= 0) {
+        enabled = _devices[idx].parentalControl;
+    }
+    if (_mutex) xSemaphoreGive(_mutex);
+    return enabled;
+}
+
 bool DeviceManager::isClientRestricted(const String& ip) const {
     if (ip.length() == 0) return false;
 
@@ -285,12 +339,25 @@ bool DeviceManager::isClientRestricted(const String& ip) const {
 
     const ClientDevice& device = _devices[idx];
     bool isGuest = strcasecmp(device.band, "Guest") == 0;
+    bool isTarget = device.parentalControl || isGuest;
     bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
-    bool restricted = device.blocked || (!hasWaiver && isGuest && scheduler.isCurfewActive());
     QuotaLimits quotas;
     scheduler.getQuotas(&quotas);
-    if (!hasWaiver && isGuest && quotas.hourlyEnabled && device.hourlyUsageBytes >= quotas.hourlyLimitBytes) restricted = true;
-    if (!hasWaiver && isGuest && quotas.dailyEnabled && device.dailyUsageBytes >= quotas.dailyLimitBytes) restricted = true;
+
+    ClientRestrictionInput input = {
+        .isBlocked           = device.blocked,
+        .isParentalTarget    = isTarget,
+        .hasActiveWaiver     = hasWaiver,
+        .isCurfewActive      = scheduler.isCurfewActive(),
+        .hourlyQuotaEnabled  = quotas.hourlyEnabled,
+        .dailyQuotaEnabled   = quotas.dailyEnabled,
+        .hourlyUsageBytes    = device.hourlyUsageBytes,
+        .hourlyLimitBytes    = quotas.hourlyLimitBytes,
+        .dailyUsageBytes     = device.dailyUsageBytes,
+        .dailyLimitBytes     = quotas.dailyLimitBytes,
+    };
+
+    bool restricted = evaluateClientRestriction(input);
     if (_mutex) xSemaphoreGive(_mutex);
     return restricted;
 }
@@ -329,6 +396,48 @@ void DeviceManager::_loadBlockedMacs() {
                     updateDevice(mac, "", "", "2.4G", -70, false);
                     int idx = _findDeviceIndex(mac);
                     if (idx >= 0) _devices[idx].blocked = true;
+                }
+                start = comma + 1;
+            }
+        }
+    }
+}
+
+void DeviceManager::_saveParentalMacs() {
+    Preferences prefs;
+    if (prefs.begin("dev_parental", false)) {
+        String parentalList = "";
+        if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+        for (size_t i = 0; i < _deviceCount; i++) {
+            if (_devices[i].parentalControl) {
+                if (parentalList.length() > 0) parentalList += ",";
+                parentalList += _devices[i].mac;
+            }
+        }
+        if (_mutex) xSemaphoreGive(_mutex);
+        prefs.putString("macs", parentalList);
+        prefs.end();
+    }
+}
+
+void DeviceManager::_loadParentalMacs() {
+    Preferences prefs;
+    if (prefs.begin("dev_parental", true)) {
+        String list = prefs.getString("macs", "");
+        prefs.end();
+
+        if (list.length() > 0) {
+            int start = 0;
+            while (start < (int)list.length()) {
+                int comma = list.indexOf(',', start);
+                if (comma < 0) comma = list.length();
+                String mac = list.substring(start, comma);
+                mac.trim();
+                if (mac.length() > 0) {
+                    int idx = _findDeviceIndex(mac);
+                    if (idx >= 0) {
+                        _devices[idx].parentalControl = true;
+                    }
                 }
                 start = comma + 1;
             }
@@ -419,7 +528,9 @@ String DeviceManager::getDevicesJson() const {
         d["online"]       = _devices[i].online;
         d["blocked"]      = _devices[i].blocked;
         d["isBlocked"]    = _devices[i].blocked;
+        d["parentalControl"] = _devices[i].parentalControl;
         d["waiver"]       = scheduler.hasActiveWaiver(_devices[i].mac);
+        d["waiverSecRemaining"] = scheduler.getWaiverRemainingSecs(_devices[i].mac);
         d["rxBytes"]      = _devices[i].dlBytes;
         d["txBytes"]      = _devices[i].ulBytes;
         d["dlBytes"]      = _devices[i].dlBytes;

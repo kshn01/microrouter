@@ -22,7 +22,8 @@
     ArrowDown,
     ArrowUp,
     UserCheck,
-    Radio
+    Radio,
+    Moon
   } from '@lucide/svelte'
   import Card from '../components/ui/Card.svelte'
   import StatCard from '../components/ui/StatCard.svelte'
@@ -31,7 +32,8 @@
   import {
     apiGetDevices,
     apiBlockDevice,
-    apiSetDeviceWaiver
+    apiSetDeviceWaiver,
+    apiSetDeviceParental
   } from '../services/api.service.js'
   import { lookupOUI } from '../utils/oui.js'
   import { formatBytes } from '../types/models.js'
@@ -73,6 +75,7 @@
             rssi: d.rssi !== undefined ? d.rssi : 0,
             online: d.online !== undefined ? d.online : false,
             isBlocked: d.isBlocked !== undefined ? d.isBlocked : (d.blocked || false),
+            parentalControl: d.parentalControl !== undefined ? d.parentalControl : (d.band === 'Guest'),
             waiverSecRemaining: d.waiverSecRemaining || d.waiverRemaining || 0,
             rxBytes: d.rxBytes || d.dlBytes || d.download_bytes || 0,
             txBytes: d.txBytes || d.ulBytes || d.upload_bytes || 0,
@@ -96,6 +99,7 @@
   let countAll = $derived(devices.length)
   let countHome = $derived(devices.filter((d) => d.band !== 'Guest').length)
   let countGuest = $derived(devices.filter((d) => d.band === 'Guest').length)
+  let countParental = $derived(devices.filter((d) => d.parentalControl).length)
   let blockedCount = $derived(devices.filter((d) => d.isBlocked).length)
   let activeWaiverCount = $derived(
     devices.filter((d) => (d.waiverSecRemaining || 0) > 0).length
@@ -113,6 +117,7 @@
         // Category check
         if (categoryFilter === 'guest' && d.band !== 'Guest') return false
         if (categoryFilter === 'home' && d.band === 'Guest') return false
+        if (categoryFilter === 'parental' && !d.parentalControl) return false
 
         // Search check
         if (!searchQuery) return true
@@ -170,6 +175,22 @@
       showToast(`+${mins}m waiver granted for ${device.hostname || device.mac}`, 'success')
     } catch (err) {
       showToast('Failed to grant waiver: ' + err.message, 'error')
+    }
+  }
+
+  async function toggleParentalControl(device) {
+    const nextState = !device.parentalControl
+    try {
+      await apiSetDeviceParental(device.mac, nextState)
+      device.parentalControl = nextState
+      showToast(
+        nextState
+          ? `Enrolled ${device.hostname || device.mac} into Parental Controls`
+          : `Removed ${device.hostname || device.mac} from Parental Controls`,
+        'info'
+      )
+    } catch (err) {
+      showToast('Failed to update parental control: ' + err.message, 'error')
     }
   }
 
@@ -331,6 +352,12 @@
         >
           Guest Wi-Fi ({countGuest})
         </button>
+        <button
+          onclick={() => (categoryFilter = 'parental')}
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all {categoryFilter === 'parental' ? 'bg-indigo-600 text-white border-indigo-500 shadow' : 'bg-white/5 text-slate-400 border-white/5 hover:text-white'}"
+        >
+          Parental Locked ({countParental})
+        </button>
       </div>
 
       <!-- Search & Sort Controls -->
@@ -422,23 +449,37 @@
           </div>
 
           <!-- Middle Row: IP, MAC, Band, Signal -->
-          <div class="p-3 rounded-xl bg-white/[0.02] border border-white/5 grid grid-cols-2 gap-2 text-xs font-mono">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono py-2 px-3 rounded-xl bg-white/[0.02] border border-white/5">
             <div>
-              <span class="text-slate-500 text-[10px] block font-sans">IPv4 Address</span>
-              <span class="text-slate-200">{dev.ip}</span>
+              <span class="text-slate-500 text-[10px] block font-sans">IP Address</span>
+              <span class="text-white">{dev.ip}</span>
             </div>
             <div>
-              <span class="text-slate-500 text-[10px] block font-sans">MAC Hardware</span>
-              <span class="text-slate-400 text-[11px] uppercase">{dev.mac}</span>
+              <span class="text-slate-500 text-[10px] block font-sans">MAC Address</span>
+              <span class="text-slate-400 uppercase text-[11px]">{dev.mac}</span>
             </div>
             <div>
               <span class="text-slate-500 text-[10px] block font-sans">Band / Link</span>
               <span class="text-indigo-400 font-sans">{dev.band}</span>
             </div>
             <div>
-              <span class="text-slate-500 text-[10px] block font-sans">Data Traffic</span>
+              <span class="text-slate-500 text-[10px] block font-sans">Data Consumed</span>
               <span class="text-emerald-400">{formatBytes(dev.rxBytes + dev.txBytes)}</span>
             </div>
+          </div>
+
+          <!-- Parental Control Toggle Row -->
+          <div class="flex items-center justify-between text-xs px-1">
+            <span class="text-slate-400 text-[11px] flex items-center gap-1.5">
+              <Moon class="w-3.5 h-3.5 text-indigo-400" />
+              Curfew & Quota Lock:
+            </span>
+            <button
+              onclick={() => toggleParentalControl(dev)}
+              class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all {dev.parentalControl ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'}"
+            >
+              {dev.parentalControl ? 'Enrolled (Protected)' : 'Off (Unrestricted)'}
+            </button>
           </div>
 
           <!-- Bottom Row: 1-Click Waiver Shortcuts & Action Button -->
@@ -488,6 +529,7 @@
               <th class="py-3 px-4 font-semibold">IP & MAC Address</th>
               <th class="py-3 px-4 font-semibold">Band / Signal</th>
               <th class="py-3 px-4 font-semibold">Data Traffic</th>
+              <th class="py-3 px-4 font-semibold">Policy</th>
               <th class="py-3 px-4 font-semibold">Status</th>
               <th class="py-3 px-4 font-semibold text-right">Actions</th>
             </tr>
@@ -520,6 +562,16 @@
                 </td>
                 <td class="py-3 px-4 text-emerald-400 text-[11px]">
                   {formatBytes(dev.rxBytes + dev.txBytes)}
+                </td>
+                <td class="py-3 px-4 font-sans">
+                  <button
+                    onclick={() => toggleParentalControl(dev)}
+                    class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all {dev.parentalControl ? 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20' : 'text-slate-500 bg-white/[0.02] border-white/5 hover:text-slate-300'}"
+                    title="Toggle Parental Control (Curfew & Quota)"
+                  >
+                    <Moon class="w-2.5 h-2.5" />
+                    {dev.parentalControl ? 'Parental' : 'Home'}
+                  </button>
                 </td>
                 <td class="py-3 px-4 font-sans">
                   {#if dev.isBlocked}

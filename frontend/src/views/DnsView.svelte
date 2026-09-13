@@ -54,7 +54,6 @@
     dhcpPrimary: '192.168.1.7',
     dhcpSecondary: '1.1.1.1',
     haMode: true,
-    localDomain: 'portal.home',
   })
 
   let queries = $state([])
@@ -84,7 +83,7 @@
       name: 'AdGuard DNS',
       desc: 'Network-wide ads and tracker blocking',
       primary: '94.140.14.14',
-      secondary: '94.140.14.15',
+      secondary: '94.140.15.15',
       tag: 'AdBlock',
       color: 'purple',
     },
@@ -126,6 +125,11 @@
       : 0
   )
 
+  function normalizeProfileId(id) {
+    const map = { cloudflare: 'ultra_fast', cloudflare_family: 'family' }
+    return map[id] || id
+  }
+
   async function loadData() {
     try {
       const [cfgRes, qRes, rDnsRes] = await Promise.all([
@@ -137,6 +141,7 @@
         config = {
           ...config,
           ...cfgRes,
+          profile: normalizeProfileId(cfgRes.profile || cfgRes.profileKey || config.profile),
           primary: cfgRes.primary || cfgRes.primaryIp || config.primary,
           secondary: cfgRes.secondary || cfgRes.secondaryIp || config.secondary,
           totalQueries: cfgRes.totalQueries ?? cfgRes.total ?? config.totalQueries,
@@ -147,6 +152,7 @@
         routerDns = {
           ...routerDns,
           ...rDnsRes,
+          profile: normalizeProfileId(rDnsRes.profile || routerDns.profile),
           haMode: rDnsRes.haMode ?? rDnsRes.hybridDns ?? true,
         }
       }
@@ -331,7 +337,7 @@
     />
     <StatCard
       title="Active Upstream"
-      value={config.profile.toUpperCase()}
+      value={profiles.find(p => p.id === config.profile)?.name || config.profile.toUpperCase()}
       subtitle="{config.primary} · {config.secondary}"
       color="purple"
       icon={Zap}

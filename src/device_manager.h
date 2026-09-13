@@ -19,6 +19,7 @@ struct ClientDevice {
     int8_t   rssi;
     bool     online;
     bool     blocked;
+    bool     parentalControl;
     uint64_t dlBytes;
     uint64_t ulBytes;
     uint32_t lastSeen;
@@ -44,6 +45,8 @@ public:
 
     bool setBlocked(const String& mac, bool blocked);
     bool isBlocked(const String& mac) const;
+    bool setParentalControl(const String& mac, bool enabled);
+    bool isParentalControl(const String& mac) const;
     bool isClientRestricted(const String& ip) const;
 
     String queryNetBIOS(const String& ipStr);
@@ -65,6 +68,8 @@ private:
     int  _findDeviceIndexByIp(const String& ip) const;
     void _saveBlockedMacs();
     void _loadBlockedMacs();
+    void _saveParentalMacs();
+    void _loadParentalMacs();
     void _scanSoftAPStations();
     void _rollUsageWindows(ClientDevice& device);
     String _resolveArpMac(const char* ipStr);
