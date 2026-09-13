@@ -35,7 +35,7 @@ def get_firmware_version():
     except Exception:
         pass
 
-    return "1.0.6"
+    return "1.1.0"
 
 version = get_firmware_version()
 print(f"--> [Build] Auto-detected dynamic FIRMWARE_VERSION: {version}")

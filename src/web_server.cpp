@@ -673,8 +673,10 @@ void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
     doc["activeNow"] = scheduler.isCurfewActive();
     doc["curfewEnabled"] = cs.enabled;
     doc["curfewActive"] = scheduler.isCurfewActive();
-    doc["currentTime"] = scheduler.getFormattedTime();
+    doc["currentTime"] = scheduler.getTimeOnly();
     doc["timeStr"]   = scheduler.getFormattedTime();
+    doc["timeOnly"]  = scheduler.getTimeOnly();
+    doc["timeSynced"] = scheduler.isTimeSynced();
 
     QuotaLimits q;
     scheduler.getQuotas(&q);

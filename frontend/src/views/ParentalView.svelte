@@ -149,10 +149,15 @@
   }
 
   let currentTimeMins = $derived.by(() => {
-    if (!limits.currentTime || limits.currentTime === '--:--') return null
-    const [h, m] = limits.currentTime.split(':')
-    const total = (parseInt(h, 10) || 0) * 60 + (parseInt(m, 10) || 0)
-    return Math.min(100, Math.max(0, Math.round((total / 1440) * 100)))
+    const raw = limits.timeOnly || limits.currentTime
+    if (!raw || raw === '--:--' || raw === 'Not Synced') return null
+    // Extract HH:MM if string contains date or full ISO string
+    const match = raw.match(/(\d{1,2}):(\d{2})/)
+    if (!match) return null
+    const h = parseInt(match[1], 10) || 0
+    const m = parseInt(match[2], 10) || 0
+    const total = h * 60 + m
+    return Math.min(99, Math.max(0.5, Math.round(((total / 1440) * 100) * 10) / 10))
   })
 
   let timelineBlocks = $derived.by(() => {

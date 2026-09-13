@@ -14,7 +14,7 @@
 
 // ── Firmware Identity ────────────────────────────────────────────
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "1.0.6"
+#define FIRMWARE_VERSION "1.1.0"
 #endif
 #define FIRMWARE_NAME       "MicroRouter"
 #define DEVICE_HOSTNAME     "microrouter"

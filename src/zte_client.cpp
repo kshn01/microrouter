@@ -2,6 +2,7 @@
 #include "device_manager.h"
 #include "config.h"
 #include "dns_engine.h"
+#include "scheduler.h"
 #include <Preferences.h>
 
 ZteRouterClient zteClient;
@@ -783,7 +784,12 @@ bool ZteRouterClient::applyRouterDhcpDns(const String& primaryDns, const String&
 
         String secDns = secondaryDns;
         secDns.trim();
-        if (secDns.isEmpty()) secDns = "0.0.0.0";
+        // Industry Practice: If secondary DNS is disabled/strict ("0.0.0.0" or empty),
+        // mirror primDns into secDns so clients receive ONLY MicroRouter for both Option 6 slots.
+        // This guarantees zero bypass while fully satisfying ZTE router form validation.
+        if (secDns.isEmpty() || secDns == "0.0.0.0") {
+            secDns = primDns;
+        }
 
         String currDns1 = extractXmlParaValue(currentXml, "DNSServer1");
         String currDns2 = extractXmlParaValue(currentXml, "DNSServer2");
@@ -1041,14 +1047,19 @@ bool ZteRouterClient::syncRouterDnsProfile(const String& profileKey, const Strin
         secondary = customSecondary.length() > 0 ? customSecondary : "1.0.0.1";
     }
 
+    // Enforce Strict Mode (Zero Bypass) whenever Curfew is actively restricting stations
+    if (scheduler.isCurfewActive()) {
+        highAvailability = false;
+    }
+
     _haMode = highAvailability;
     String espIp = WiFi.localIP().toString();
     if (espIp == "0.0.0.0" || espIp.length() == 0) espIp = "192.168.1.7";
 
     // High-Availability Hybrid DNS Architecture:
     // Option 6 Primary = ESP32 IP
-    // Option 6 Secondary = Upstream (if HA mode) or 0.0.0.0 (if Strict mode)
-    String dhcpSecondary = highAvailability ? primary : "0.0.0.0";
+    // Option 6 Secondary = Upstream (if HA mode) or espIp (if Strict mode, for zero bypass)
+    String dhcpSecondary = highAvailability ? primary : espIp;
 
     applyRouterDns(primary, secondary);
     bool okDhcp = applyRouterDhcpDns(espIp, dhcpSecondary);
@@ -1085,6 +1096,9 @@ void ZteRouterClient::syncRouterDnsAtBoot() {
     prefs.begin("microrouter", true);
     String prof = prefs.getString("dns_prof", "ultra_fast");
     bool ha = prefs.getBool("dns_ha", true);
+    if (scheduler.isCurfewActive()) {
+        ha = false; // Strictly enforce zero-bypass if booting during curfew hours
+    }
     String cp = prefs.getString("dns_cp", "");
     String cs = prefs.getString("dns_cs", "");
     prefs.end();

@@ -42,6 +42,7 @@ public:
     // Time & NTP
     bool isTimeSynced() const;
     String getFormattedTime() const;
+    String getTimeOnly() const;
     time_t getEpoch() const;
 
     // Temporal Waivers
@@ -72,6 +73,7 @@ private:
     unsigned long  _lastNtpCheck = 0;
     unsigned long  _lastLoopCheck = 0;
     bool           _ntpSynced = false;
+    bool           _lastCurfewActive = false;
 };
 
 extern Scheduler scheduler;

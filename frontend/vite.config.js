@@ -11,9 +11,9 @@ function getGitVersion() {
     } catch {}
     const tag = execSync('git describe --tags --abbrev=0').toString().trim()
     const clean = tag.replace(/^v/, '').replace(/-.*$/, '')
-    return clean || '1.0.6'
+    return clean || '1.1.0'
   } catch {
-    return '1.0.6'
+    return '1.1.0'
   }
 }
 

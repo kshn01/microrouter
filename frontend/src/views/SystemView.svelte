@@ -106,7 +106,7 @@
       <div class="flex flex-col divide-y divide-white/5 text-sm">
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Firmware Version</span>
-          <span class="font-mono font-bold text-emerald-400">v{($systemInfo?.fwVersion || $systemInfo?.firmwareVersion || '1.0.6').toString().replace(/^v/, '')}</span>
+          <span class="font-mono font-bold text-emerald-400">v{($systemInfo?.fwVersion || $systemInfo?.firmwareVersion || (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1.0')).toString().replace(/^v/, '')}</span>
         </div>
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Build Target</span>

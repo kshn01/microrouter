@@ -21,3 +21,13 @@ inline bool isLocalDnsDomain(const char* domain) {
 inline bool isDoHCanaryDomain(const char* domain) {
     return domain && strcasecmp(domain, "use-application-dns.net") == 0;
 }
+
+inline bool isEncryptedDnsEndpoint(const char* domain) {
+    if (!domain) return false;
+    return domainMatches(domain, "dns.google") ||
+           domainMatches(domain, "cloudflare-dns.com") ||
+           domainMatches(domain, "one.one.one.one") ||
+           domainMatches(domain, "dns.quad9.net") ||
+           domainMatches(domain, "dns.adguard-dns.com") ||
+           domainMatches(domain, "dns.nextdns.io");
+}

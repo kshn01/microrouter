@@ -275,8 +275,8 @@ static void dnsProxyTask(void* pvParameters) {
             }
         }
 
-        // 2. DoH Canary Sinkhole (RFC/Mozilla use-application-dns.net -> NXDOMAIN)
-        if (isDoHCanaryDomain(qDomain)) {
+        // 2. DoH Canary & Encrypted Resolver Sinkhole (Forces devices to standard DNS)
+        if (isDoHCanaryDomain(qDomain) || isEncryptedDnsEndpoint(qDomain)) {
             memcpy(s_txBuf, s_rxBuf, qEnd);
             s_txBuf[2] = 0x85; // QR=1, AA=1, RD=1
             s_txBuf[3] = 0x83; // RA=1, RCODE=3 (NXDOMAIN)

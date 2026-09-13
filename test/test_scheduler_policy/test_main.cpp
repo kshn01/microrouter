@@ -36,8 +36,14 @@ void test_dns_matching_accepts_exact_and_subdomains() {
 void test_dns_special_domains_are_case_insensitive() {
     TEST_ASSERT_TRUE(isLocalDnsDomain("MICROROUTER.LOCAL"));
     TEST_ASSERT_TRUE(isDoHCanaryDomain("USE-APPLICATION-DNS.NET"));
+    TEST_ASSERT_TRUE(isEncryptedDnsEndpoint("dns.google"));
+    TEST_ASSERT_TRUE(isEncryptedDnsEndpoint("CLOUDFLARE-DNS.COM"));
+    TEST_ASSERT_TRUE(isEncryptedDnsEndpoint("one.one.one.one"));
+    TEST_ASSERT_TRUE(isEncryptedDnsEndpoint("dns.quad9.net"));
     TEST_ASSERT_FALSE(isLocalDnsDomain("router.local"));
     TEST_ASSERT_FALSE(isDoHCanaryDomain("example.com"));
+    TEST_ASSERT_FALSE(isEncryptedDnsEndpoint("google.com"));
+    TEST_ASSERT_FALSE(isEncryptedDnsEndpoint("example.org"));
 }
 
 void test_wifi_scan_policy_accepts_only_visible_24ghz_results() {

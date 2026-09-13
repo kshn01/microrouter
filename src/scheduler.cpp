@@ -1,6 +1,8 @@
 #include "scheduler.h"
 #include "scheduler_policy.h"
 #include "config.h"
+#include "zte_client.h"
+#include "dns_engine.h"
 #include <Preferences.h>
 #include <ArduinoJson.h>
 
@@ -42,10 +44,35 @@ void Scheduler::loop() {
             time_t now = time(nullptr);
             if (now > 1700000000) {
                 _ntpSynced = true;
+                _lastCurfewActive = isCurfewActive();
                 Serial.printf("[Scheduler] NTP synced: %s", ctime(&now));
             } else if (nowMs - _lastNtpCheck > 30000) {
                 _lastNtpCheck = nowMs;
                 _syncNTP();
+            }
+        }
+
+        // Automated Curfew Edge Detection: Trigger ZTE Router DHCP update when entering/exiting curfew
+        if (_ntpSynced) {
+            bool currentCurfewActive = isCurfewActive();
+            if (currentCurfewActive != _lastCurfewActive) {
+                Serial.printf("[Scheduler] Curfew transition detected: %s -> %s. Syncing ZTE router DHCP...\n",
+                              _lastCurfewActive ? "ACTIVE" : "INACTIVE",
+                              currentCurfewActive ? "ACTIVE" : "INACTIVE");
+                _lastCurfewActive = currentCurfewActive;
+
+                // Sync with ZTE Router:
+                // When curfew active: enforce strict zero-bypass mode (both DNS1 & DNS2 = MicroRouter IP)
+                // When curfew ends: restore user's saved high-availability mode
+                Preferences prefs;
+                prefs.begin("microrouter", true);
+                bool userHa = prefs.getBool("dns_user_ha", true);
+                prefs.end();
+
+                DnsStatsSnapshot stats;
+                dnsEngine.getStats(&stats);
+                bool targetHa = currentCurfewActive ? false : userHa;
+                zteClient.syncRouterDnsProfile(stats.profileKey, stats.upstreamPrimary, stats.upstreamSecondary, targetHa);
             }
         }
     }
@@ -77,6 +104,16 @@ String Scheduler::getFormattedTime() const {
     localtime_r(&now, &ti);
     char buf[32];
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
+    return String(buf);
+}
+
+String Scheduler::getTimeOnly() const {
+    time_t now = time(nullptr);
+    if (now < 1700000000) return "--:--";
+    struct tm ti;
+    localtime_r(&now, &ti);
+    char buf[16];
+    strftime(buf, sizeof(buf), "%H:%M", &ti);
     return String(buf);
 }
 
