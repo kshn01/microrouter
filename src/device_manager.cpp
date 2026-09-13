@@ -237,15 +237,63 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         _devices[idx].parentalControl = (strcasecmp(band.c_str(), "Guest") == 0);
         _devices[idx].dlBytes = dl;
         _devices[idx].ulBytes = ul;
-        _devices[idx].hourlyUsageBytes = 0;
-        _devices[idx].dailyUsageBytes = 0;
+        _devices[idx].hourlyUsageBytes = (dl + ul);
+        _devices[idx].dailyUsageBytes = (dl + ul);
         _devices[idx].usageHourKey = 0;
         _devices[idx].usageDayKey = 0;
         _devices[idx].hourlyLimitHitCount = 0;
         _devices[idx].lastSeen = nowSec;
         _devices[idx].netbiosTries = 0;
+        Preferences pPrefs;
+        if (pPrefs.begin("dev_parental", true)) {
+            String pList = pPrefs.getString("macs", "");
+            pPrefs.end();
+            if (pList.indexOf(mac) >= 0) {
+                _devices[idx].parentalControl = true;
+            }
+        }
+        _rollUsageWindows(_devices[idx]);
     }
     if (_mutex) xSemaphoreGive(_mutex);
+}
+
+void DeviceManager::_archiveDayToHistory(const ClientDevice& device, uint32_t completedEpochDay) {
+    if (strlen(device.mac) == 0 || device.dailyUsageBytes == 0) return;
+
+    Guest7DayRecord* rec = nullptr;
+    for (auto& r : _guest7DayRecords) {
+        if (strcasecmp(r.mac, device.mac) == 0) {
+            rec = &r;
+            break;
+        }
+    }
+
+    if (!rec) {
+        Guest7DayRecord newRec;
+        memset(&newRec, 0, sizeof(Guest7DayRecord));
+        strncpy(newRec.mac, device.mac, sizeof(newRec.mac) - 1);
+        strncpy(newRec.hostname, device.hostname, sizeof(newRec.hostname) - 1);
+        newRec.validDaysCount = 0;
+        _guest7DayRecords.push_back(newRec);
+        rec = &_guest7DayRecords.back();
+    }
+
+    if (rec) {
+        if (strlen(device.hostname) > 0 && strcmp(device.hostname, "Unknown") != 0) {
+            strncpy(rec->hostname, device.hostname, sizeof(rec->hostname) - 1);
+        }
+        for (int i = 6; i > 0; i--) {
+            rec->days[i] = rec->days[i - 1];
+        }
+        rec->days[0].epochDay = completedEpochDay;
+        rec->days[0].bytesUsed = device.dailyUsageBytes;
+        rec->days[0].activeSeconds = 1800;
+        rec->days[0].quotaBlockCount = 0;
+        if (rec->validDaysCount < 7) {
+            rec->validDaysCount++;
+        }
+        _saveGuestHistory();
+    }
 }
 
 void DeviceManager::_rollUsageWindows(ClientDevice& device) {
@@ -260,6 +308,7 @@ void DeviceManager::_rollUsageWindows(ClientDevice& device) {
         device.hourlyLimitHitCount = 0;
     }
     if (device.usageDayKey != 0 && device.usageDayKey != dayKey) {
+        _archiveDayToHistory(device, device.usageDayKey);
         device.dailyUsageBytes = 0;
     }
     device.usageHourKey = hourKey;

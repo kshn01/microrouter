@@ -80,6 +80,7 @@
             rxBytes: d.rxBytes || d.dlBytes || d.download_bytes || 0,
             txBytes: d.txBytes || d.ulBytes || d.upload_bytes || 0,
             hourlyUsage: d.hourlyUsage || d.hourlyUsageBytes || 0,
+            dailyUsage: d.dailyUsage || d.dailyUsageBytes || (d.rxBytes + d.txBytes) || 0,
             hitCount: d.hitCount || d.hourlyLimitHitCount || 0,
             vendor: d.vendor || oui.vendor,
             deviceType: d.deviceType || oui.type,
@@ -400,6 +401,8 @@
       {#each displayDevices as dev}
         {@const IconComp = getDeviceIcon(dev.icon)}
         {@const hasWaiver = (dev.waiverSecRemaining || 0) > 0}
+        {@const maxDailyRef = Math.max(dev.dailyUsage, 100 * 1024 * 1024)}
+        {@const usagePct = Math.min(100, Math.max(5, Math.round((dev.dailyUsage / maxDailyRef) * 100)))}
         <Card hover={true} class="flex flex-col justify-between gap-4 border {dev.isBlocked ? 'border-rose-500/30 bg-rose-500/[0.02]' : 'border-white/10'}">
           <!-- Top Row: Icon + Name + Status -->
           <div class="flex items-start justify-between gap-3">
@@ -465,6 +468,25 @@
             <div>
               <span class="text-slate-500 text-[10px] block font-sans">Data Consumed</span>
               <span class="text-emerald-400">{formatBytes(dev.rxBytes + dev.txBytes)}</span>
+            </div>
+          </div>
+
+          <!-- Daily Usage Visual Bar -->
+          <div class="px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-1.5">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-slate-400 font-sans flex items-center gap-1">
+                <Activity class="w-3 h-3 text-indigo-400" />
+                Today's Usage:
+              </span>
+              <span class="font-mono font-semibold text-white">
+                {formatBytes(dev.dailyUsage)}
+              </span>
+            </div>
+            <div class="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div
+                class="h-full rounded-full transition-all duration-300 {dev.isBlocked ? 'bg-rose-500' : 'bg-gradient-to-r from-indigo-500 to-emerald-400'}"
+                style="width: {usagePct}%"
+              ></div>
             </div>
           </div>
 
@@ -561,7 +583,10 @@
                   </div>
                 </td>
                 <td class="py-3 px-4 text-emerald-400 text-[11px]">
-                  {formatBytes(dev.rxBytes + dev.txBytes)}
+                  <div>{formatBytes(dev.rxBytes + dev.txBytes)}</div>
+                  <div class="text-[10px] text-slate-400 font-sans mt-0.5">
+                    Today: <span class="text-slate-200 font-mono">{formatBytes(dev.dailyUsage)}</span>
+                  </div>
                 </td>
                 <td class="py-3 px-4 font-sans">
                   <button

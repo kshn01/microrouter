@@ -75,6 +75,7 @@ private:
     String _resolveArpMac(const char* ipStr);
     void _loadGuestHistory();
     void _saveGuestHistory();
+    void _archiveDayToHistory(const ClientDevice& device, uint32_t completedEpochDay);
 
     struct DailyHistorySlot {
         uint32_t epochDay;

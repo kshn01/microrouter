@@ -2,14 +2,13 @@
   import { Menu, RotateCcw, Power, Wifi, ShieldAlert, Cpu } from '@lucide/svelte'
   import { connectionState, toggleSimulation } from '../../stores/connection.store.js'
   import { wifiSsid, wifiConnected } from '../../stores/telemetry.store.js'
-  import { rebootDevice } from '../../stores/system.store.js'
+  import RebootModal from '../modals/RebootModal.svelte'
 
   let { onToggleMobile = () => {} } = $props()
+  let isRebootModalOpen = $state(false)
 
-  async function handleRestart() {
-    if (confirm('Reboot MicroRouter ESP32-S3?')) {
-      await rebootDevice()
-    }
+  function handleRestart() {
+    isRebootModalOpen = true
   }
 </script>
 
@@ -76,3 +75,5 @@
     </button>
   </div>
 </header>
+
+<RebootModal isOpen={isRebootModalOpen} onClose={() => (isRebootModalOpen = false)} />

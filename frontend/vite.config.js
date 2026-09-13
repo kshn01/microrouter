@@ -2,9 +2,24 @@ import tailwindcss from '@tailwindcss/vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { defineConfig } from 'vite'
 import path from 'path'
+import { execSync } from 'child_process'
+
+function getGitVersion() {
+  try {
+    const tag = execSync('git describe --tags --always').toString().trim()
+    return tag.replace(/^v/, '')
+  } catch {
+    return '1.0.3'
+  }
+}
+
+const APP_VERSION = getGitVersion()
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   plugins: [tailwindcss(), svelte()],
 
   // Build output goes to ../data/ for ESP32 LittleFS upload

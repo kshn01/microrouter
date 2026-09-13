@@ -3,9 +3,12 @@
   import { Cpu, HardDrive, RefreshCw, Power, Server, ShieldCheck, Layers, Zap } from '@lucide/svelte'
   import Card from '../components/ui/Card.svelte'
   import ProgressBar from '../components/ui/ProgressBar.svelte'
-  import { systemInfo, isLoadingSystem, loadSystemInfo, rebootDevice } from '../stores/system.store.js'
+  import RebootModal from '../components/modals/RebootModal.svelte'
+  import { systemInfo, isLoadingSystem, loadSystemInfo } from '../stores/system.store.js'
   import { freeHeap, totalHeap, heapPercent } from '../stores/telemetry.store.js'
   import { formatBytes } from '../types/models.js'
+
+  let isRebootModalOpen = $state(false)
 
   onMount(() => {
     if (!$systemInfo) {
@@ -45,14 +48,17 @@
       </button>
 
       <button
-        onclick={rebootDevice}
+        onclick={() => (isRebootModalOpen = true)}
         class="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-xs font-medium text-rose-300 border border-rose-500/20 transition-colors flex items-center gap-2"
       >
         <Power class="w-3.5 h-3.5" />
-        <span>Reboot</span>
+        <span>Reboot Router</span>
       </button>
     </div>
   </div>
+
+  <!-- Safe Double-Confirm Reboot Modal -->
+  <RebootModal isOpen={isRebootModalOpen} onClose={() => (isRebootModalOpen = false)} />
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <!-- Hardware Details Card -->
@@ -100,7 +106,7 @@
       <div class="flex flex-col divide-y divide-white/5 text-sm">
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Firmware Version</span>
-          <span class="font-mono font-bold text-emerald-400">v{$systemInfo?.fwVersion || $systemInfo?.firmwareVersion || '1.0.0'}</span>
+          <span class="font-mono font-bold text-emerald-400">v{$systemInfo?.fwVersion || $systemInfo?.firmwareVersion || '1.0.3'}</span>
         </div>
         <div class="flex items-center justify-between py-2.5">
           <span class="text-slate-400">Build Target</span>

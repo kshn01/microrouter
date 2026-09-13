@@ -55,6 +55,31 @@
     return Laptop
   }
 
+  function getDevice7DaySlots(dev) {
+    const hist = dev.history || []
+    // Chronological order: D-6, D-5, D-4, D-3, D-2, D-1, Today
+    const slots = []
+    for (let i = 5; i >= 0; i--) {
+      const h = hist[i] || {}
+      slots.push({
+        label: `D-${i + 1}`,
+        bytes: h.bytesUsed || 0,
+        isToday: false,
+      })
+    }
+    slots.push({
+      label: 'Today',
+      bytes: dev.todayUsageBytes || 0,
+      isToday: true,
+    })
+
+    const maxBytes = Math.max(...slots.map(s => s.bytes), 1024 * 1024)
+    return slots.map(s => ({
+      ...s,
+      pct: s.bytes > 0 ? Math.max(15, Math.round((s.bytes / maxBytes) * 100)) : 10
+    }))
+  }
+
   async function loadAnalytics() {
     try {
       refreshing = true
@@ -417,17 +442,17 @@
                   {formatBytes(totalDevBytes)}
                 </td>
 
-                <!-- Mini 7-Day Pills -->
+                <!-- Mini 7-Day Pills (D-6 -> Today) -->
                 <td class="px-5 py-4">
                   <div class="flex items-center gap-1">
-                    {#each (dev.history || []).slice(0, 7) as slot, sIdx}
+                    {#each getDevice7DaySlots(dev) as slot}
                       <div
-                        class="w-5 h-7 rounded bg-slate-800/80 border border-white/5 flex flex-col justify-end p-0.5"
-                        title="D-{sIdx + 1}: {formatBytes(slot.bytesUsed || 0)}"
+                        class="w-5 h-7 rounded bg-slate-800/80 border {slot.isToday ? 'border-indigo-500/40 bg-indigo-950/30' : 'border-white/5'} flex flex-col justify-end p-0.5"
+                        title="{slot.label}: {formatBytes(slot.bytes)}"
                       >
                         <div
-                          class="w-full rounded-sm bg-indigo-500/70"
-                          style="height: {Math.min(100, Math.max(10, Math.round(((slot.bytesUsed || 0) / (totalDevBytes || 1)) * 100)))}%"
+                          class="w-full rounded-sm {slot.isToday ? 'bg-gradient-to-t from-indigo-600 to-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.5)]' : 'bg-slate-600/70'}"
+                          style="height: {slot.pct}%"
                         ></div>
                       </div>
                     {/each}

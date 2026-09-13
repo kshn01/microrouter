@@ -5,6 +5,8 @@
 import { writable, derived } from 'svelte/store'
 import { rssiToPercent } from '../types/models.js'
 
+const fallbackVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.3'
+
 export const telemetry = writable({
   uptimeMs: 0,
   freeHeap: 0,
@@ -19,7 +21,7 @@ export const telemetry = writable({
   wifiMac: '—',
   wsClients: 0,
   bootCount: 0,
-  fwVersion: '1.0.0',
+  fwVersion: fallbackVersion,
   partition: 'ota_0',
   fwValidated: true,
   dnsTotal: 0,
@@ -40,7 +42,7 @@ export const wifiIp = derived(telemetry, ($t) => $t.wifiIp || '—')
 export const wifiConnected = derived(telemetry, ($t) => $t.wifiConnected || false)
 export const wsClients = derived(telemetry, ($t) => $t.wsClients || 0)
 export const activePartition = derived(telemetry, ($t) => $t.partition || 'ota_0')
-export const fwVersion = derived(telemetry, ($t) => $t.fwVersion || '1.0.0')
+export const fwVersion = derived(telemetry, ($t) => $t.fwVersion || fallbackVersion)
 export const fwValidated = derived(telemetry, ($t) => $t.fwValidated || false)
 export const bootCount = derived(telemetry, ($t) => $t.bootCount || 0)
 export const dnsTotal = derived(telemetry, ($t) => $t.dnsTotal || 0)
