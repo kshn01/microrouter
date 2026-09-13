@@ -65,7 +65,7 @@ describe('mock service', () => {
   })
 
   it('returns system diagnostics and session information', () => {
-    expect(getMockSystemInfo()).toMatchObject({ chipModel: 'ESP32-S3 (Dual-Core)', firmwareVersion: '1.0.3' })
+    expect(getMockSystemInfo()).toMatchObject({ chipModel: 'ESP32-S3 (Dual-Core)', firmwareVersion: '1.0.6' })
     expect(getMockSession()).toMatchObject({ loggedIn: true, guest: true })
     expect(getMockLastLog()).toContain('[System] Web Server active')
   })

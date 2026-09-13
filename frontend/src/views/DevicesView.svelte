@@ -406,25 +406,25 @@
         <Card hover={true} class="flex flex-col justify-between gap-4 border {dev.isBlocked ? 'border-rose-500/30 bg-rose-500/[0.02]' : 'border-white/10'}">
           <!-- Top Row: Icon + Name + Status -->
           <div class="flex items-start justify-between gap-3">
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 min-w-0 flex-1">
               <div class="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-indigo-400 shrink-0 shadow">
                 <IconComp class="w-5 h-5" />
               </div>
-              <div>
-                <div class="flex items-center gap-1.5">
-                  <span class="font-bold text-white text-sm">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="font-bold text-white text-sm truncate" title={dev.hostname || 'Station'}>
                     {dev.hostname || 'Station'}
                   </span>
                   {#if dev.netbios}
-                    <span class="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] font-mono">
+                    <span class="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] font-mono shrink-0">
                       {dev.netbios}
                     </span>
                   {/if}
                 </div>
-                <div class="flex items-center gap-1.5 mt-0.5">
-                  <span class="text-xs text-slate-400 font-medium">{dev.vendor}</span>
+                <div class="flex items-center gap-1.5 mt-0.5 min-w-0">
+                  <span class="text-xs text-slate-400 font-medium truncate">{dev.vendor}</span>
                   {#if dev.isRandomized}
-                    <span class="text-[9px] px-1 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <span class="text-[9px] px-1 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
                       Private MAC
                     </span>
                   {/if}
@@ -433,41 +433,43 @@
             </div>
 
             <!-- Status Badge -->
-            {#if dev.isBlocked}
-              <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
-                <Ban class="w-3 h-3" />
-                Blocked
-              </span>
-            {:else if hasWaiver}
-              <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                <Clock class="w-3 h-3" />
-                {formatWaiverTime(dev.waiverSecRemaining)}
-              </span>
-            {:else}
-              <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                <CheckCircle2 class="w-3 h-3" />
-                Online
-              </span>
-            {/if}
+            <div class="shrink-0">
+              {#if dev.isBlocked}
+                <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20 whitespace-nowrap">
+                  <Ban class="w-3 h-3" />
+                  Blocked
+                </span>
+              {:else if hasWaiver}
+                <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 whitespace-nowrap">
+                  <Clock class="w-3 h-3" />
+                  {formatWaiverTime(dev.waiverSecRemaining)}
+                </span>
+              {:else}
+                <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 whitespace-nowrap">
+                  <CheckCircle2 class="w-3 h-3" />
+                  Online
+                </span>
+              {/if}
+            </div>
           </div>
 
           <!-- Middle Row: IP, MAC, Band, Signal -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono py-2 px-3 rounded-xl bg-white/[0.02] border border-white/5">
-            <div>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs font-mono py-2.5 px-3 rounded-xl bg-white/[0.02] border border-white/5">
+            <div class="min-w-0">
               <span class="text-slate-500 text-[10px] block font-sans">IP Address</span>
-              <span class="text-white">{dev.ip}</span>
+              <span class="text-white font-medium truncate block">{dev.ip}</span>
             </div>
-            <div>
-              <span class="text-slate-500 text-[10px] block font-sans">MAC Address</span>
-              <span class="text-slate-400 uppercase text-[11px]">{dev.mac}</span>
-            </div>
-            <div>
+            <div class="min-w-0">
               <span class="text-slate-500 text-[10px] block font-sans">Band / Link</span>
-              <span class="text-indigo-400 font-sans">{dev.band}</span>
+              <span class="text-indigo-400 font-sans truncate block">{dev.band}</span>
             </div>
-            <div>
-              <span class="text-slate-500 text-[10px] block font-sans">Data Consumed</span>
-              <span class="text-emerald-400">{formatBytes(dev.rxBytes + dev.txBytes)}</span>
+            <div class="min-w-0">
+              <span class="text-slate-500 text-[10px] block font-sans">MAC Address</span>
+              <span class="text-slate-400 uppercase text-[11px] truncate block" title={dev.mac}>{dev.mac}</span>
+            </div>
+            <div class="min-w-0">
+              <span class="text-slate-500 text-[10px] block font-sans">Total Traffic</span>
+              <span class="text-emerald-400 truncate block">{formatBytes(dev.rxBytes + dev.txBytes)}</span>
             </div>
           </div>
 
@@ -545,7 +547,7 @@
     <Card>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-xs">
-          <thead class="bg-white/[0.02] border-b border-white/5 text-slate-400 uppercase tracking-wider text-[10px]">
+          <thead class="bg-white/[0.02] border-b border-white/5 text-slate-400 uppercase tracking-wider text-[10px] whitespace-nowrap">
             <tr>
               <th class="py-3 px-4 font-semibold">Device / Vendor</th>
               <th class="py-3 px-4 font-semibold">IP & MAC Address</th>
@@ -556,7 +558,7 @@
               <th class="py-3 px-4 font-semibold text-right">Actions</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-white/5 font-mono">
+          <tbody class="divide-y divide-white/5 font-mono whitespace-nowrap">
             {#each displayDevices as dev}
               {@const IconComp = getDeviceIcon(dev.icon)}
               {@const hasWaiver = (dev.waiverSecRemaining || 0) > 0}

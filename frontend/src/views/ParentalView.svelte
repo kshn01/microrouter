@@ -374,10 +374,10 @@
   </div>
 
   <!-- Settings Grid -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
     <!-- Curfew Window Schedule -->
-    <Card class="flex flex-col justify-between">
-      <div>
+    <Card class="h-full flex flex-col justify-between">
+      <div class="flex-1 flex flex-col">
         <!-- Card Header with iOS-style Switch -->
         <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
           <div class="flex items-center gap-2.5">
@@ -390,8 +390,14 @@
             </div>
           </div>
 
-          <!-- Modern iOS Toggle Switch -->
-          <div class="flex items-center gap-2">
+          <!-- Router Clock Indicator & Modern iOS Toggle Switch -->
+          <div class="flex items-center gap-2.5">
+            <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-white/10 text-[11px] font-mono">
+              <span class="w-1.5 h-1.5 rounded-full {limits.currentTime && limits.currentTime !== '--:--' ? 'bg-emerald-400' : 'bg-amber-400'}"></span>
+              <span class="text-slate-400">Clock:</span>
+              <span class="text-white font-bold">{limits.currentTime || '--:--'}</span>
+            </div>
+
             <button
               type="button"
               role="switch"
@@ -422,7 +428,7 @@
                   <strong>Curfew Active Now:</strong> Internet access blocked until {format12Hour(limits.endHour, limits.endMin)}.
                 </span>
               </div>
-              <span class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono text-[10px] uppercase font-semibold">
+              <span class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono text-[10px] uppercase font-semibold shrink-0">
                 Lock Active
               </span>
             </div>
@@ -434,7 +440,7 @@
                   <strong>Normal Access Active:</strong> Bedtime lockout starts tonight at {format12Hour(limits.startHour, limits.startMin)}.
                 </span>
               </div>
-              <span class="text-slate-400 text-[11px] font-mono">
+              <span class="text-slate-400 text-[11px] font-mono shrink-0">
                 Router: {limits.currentTime || '--:--'}
               </span>
             </div>
@@ -457,53 +463,53 @@
               {#if timelineBlocks.isOvernight}
                 <!-- Morning Curfew Block (00:00 -> End) -->
                 <div
-                  class="h-full bg-indigo-950/80 border-r border-indigo-500/30 flex items-center justify-center text-[10px] font-mono text-indigo-300 transition-all duration-300"
+                  class="h-full bg-indigo-950/80 border-r border-indigo-500/30 flex items-center justify-center text-[10px] font-mono text-indigo-300 transition-all duration-300 shrink-0 min-w-0 overflow-hidden"
                   style="width: {timelineBlocks.morningCurfewPct}%"
                   title="Bedtime Lock (until {format12Hour(limits.endHour, limits.endMin)})"
                 >
                   {#if timelineBlocks.morningCurfewPct > 12}
-                    <Moon class="w-3 h-3 text-indigo-400" />
+                    <Moon class="w-3 h-3 text-indigo-400 shrink-0" />
                   {/if}
                 </div>
 
                 <!-- Daytime Unlocked Access (End -> Start) -->
                 <div
-                  class="h-full bg-emerald-500/15 flex items-center justify-center text-[10px] font-medium text-emerald-300 transition-all duration-300"
+                  class="h-full bg-emerald-500/15 flex items-center justify-center text-[10px] font-medium text-emerald-300 transition-all duration-300 shrink-0 min-w-0 overflow-hidden"
                   style="width: {timelineBlocks.daytimePct}%"
                   title="Internet Open"
                 >
-                  <span class="flex items-center gap-1">
-                    <Sun class="w-3 h-3 text-emerald-400" />
-                    {#if timelineBlocks.daytimePct > 25}
-                      <span>Open Access</span>
+                  <span class="flex items-center gap-1 truncate px-1">
+                    <Sun class="w-3 h-3 text-emerald-400 shrink-0" />
+                    {#if timelineBlocks.daytimePct > 35}
+                      <span class="truncate">Open Access</span>
                     {/if}
                   </span>
                 </div>
 
                 <!-- Night Curfew Block (Start -> 24:00) -->
                 <div
-                  class="h-full bg-indigo-950/80 border-l border-indigo-500/30 flex items-center justify-center text-[10px] font-mono text-indigo-300 transition-all duration-300"
+                  class="h-full bg-indigo-950/80 border-l border-indigo-500/30 flex items-center justify-center text-[10px] font-mono text-indigo-300 transition-all duration-300 shrink-0 min-w-0 overflow-hidden"
                   style="width: {timelineBlocks.nightCurfewPct}%"
                   title="Bedtime Lock (starts {format12Hour(limits.startHour, limits.startMin)})"
                 >
                   {#if timelineBlocks.nightCurfewPct > 12}
-                    <Moon class="w-3 h-3 text-indigo-400" />
+                    <Moon class="w-3 h-3 text-indigo-400 shrink-0" />
                   {/if}
                 </div>
               {:else}
                 <!-- Same-Day Curfew Blocks -->
-                <div class="h-full bg-emerald-500/15" style="width: {timelineBlocks.prePct}%"></div>
-                <div class="h-full bg-indigo-950/80 border-x border-indigo-500/30 flex items-center justify-center text-indigo-300" style="width: {timelineBlocks.curfewPct}%">
-                  <Moon class="w-3 h-3 text-indigo-400" />
+                <div class="h-full bg-emerald-500/15 shrink-0 min-w-0 overflow-hidden" style="width: {timelineBlocks.prePct}%"></div>
+                <div class="h-full bg-indigo-950/80 border-x border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0 min-w-0 overflow-hidden" style="width: {timelineBlocks.curfewPct}%">
+                  <Moon class="w-3 h-3 text-indigo-400 shrink-0" />
                 </div>
-                <div class="h-full bg-emerald-500/15" style="width: {timelineBlocks.postPct}%"></div>
+                <div class="h-full bg-emerald-500/15 shrink-0 min-w-0 overflow-hidden" style="width: {timelineBlocks.postPct}%"></div>
               {/if}
 
               <!-- Router Clock Pointer (if time is synced) -->
               {#if currentTimeMins !== null}
                 <div
-                  class="absolute top-0 bottom-0 w-0.5 bg-amber-400 shadow-[0_0_8px_#fbbf24] z-10 transition-all duration-500"
-                  style="left: {currentTimeMins}%"
+                  class="absolute top-0 bottom-0 w-0.5 bg-amber-400 shadow-[0_0_8px_#fbbf24] z-10 transition-all duration-500 pointer-events-none"
+                  style="left: {Math.min(99, Math.max(1, currentTimeMins))}%"
                   title="Current Router Clock: {limits.currentTime}"
                 >
                   <div class="absolute -top-1 -translate-x-1/2 w-2 h-2 rounded-full bg-amber-400"></div>
@@ -575,12 +581,12 @@
             <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
               Quick Schedules:
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div class="grid grid-cols-2 gap-2">
               {#each PRESETS as p}
                 <button
                   type="button"
                   onclick={() => applyPreset(p.sH, p.sM, p.eH, p.eM)}
-                  class="p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 text-left transition-all group"
+                  class="p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 text-left transition-all group"
                 >
                   <div class="font-medium text-slate-200 group-hover:text-white text-[11px]">{p.label}</div>
                   <div class="text-[10px] text-slate-400 font-mono mt-0.5">{p.desc}</div>
@@ -592,7 +598,7 @@
       </div>
 
       <!-- Card Action Footer -->
-      <div class="flex items-center justify-between pt-4 mt-4 border-t border-white/10">
+      <div class="flex items-center justify-between pt-4 mt-auto border-t border-white/10">
         <div class="text-[11px] text-slate-400">
           {#if curfewDirty}
             <span class="inline-flex items-center gap-1 text-amber-400 font-medium">
@@ -621,146 +627,152 @@
     </Card>
 
     <!-- Bandwidth Quota Configuration -->
-    <Card>
-      <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-            <HardDrive class="w-5 h-5" />
+    <Card class="h-full flex flex-col justify-between">
+      <div class="flex-1 flex flex-col">
+        <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <HardDrive class="w-5 h-5" />
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-white tracking-tight">Bandwidth Quotas</h2>
+              <p class="text-[11px] text-slate-400">Daily and hourly data thresholds for protected clients</p>
+            </div>
           </div>
-          <div>
-            <h2 class="text-base font-bold text-white tracking-tight">Bandwidth Quotas</h2>
-            <p class="text-[11px] text-slate-400">Daily and hourly data thresholds for protected clients</p>
+
+          <div class="flex items-center gap-2">
+            {#if limits.dailyQuotaMB > 0}
+              <span class="px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-[11px] font-semibold">
+                {formatMbHuman(limits.dailyQuotaMB)} / day
+              </span>
+            {:else}
+              <span class="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono text-[11px] font-semibold">
+                Unlimited Daily
+              </span>
+            {/if}
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          {#if limits.dailyQuotaMB > 0}
-            <span class="px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-[11px] font-semibold">
-              {formatMbHuman(limits.dailyQuotaMB)} / day
-            </span>
-          {:else}
-            <span class="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono text-[11px] font-semibold">
-              Unlimited Daily
-            </span>
-          {/if}
-        </div>
-      </div>
-
-      <div class="flex flex-col gap-4 text-xs">
-        <!-- Daily Consumption Progress -->
-        <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-2.5">
-          <div class="flex items-center justify-between text-[11px]">
-            <div class="flex items-center gap-1.5 text-slate-400">
-              <Sliders class="w-3.5 h-3.5 text-indigo-400" />
-              <span>Today's Guest Fleet Consumption</span>
-            </div>
-            <div class="font-mono text-white font-semibold">
-              {#if limits.dailyQuotaMB > 0}
-                <span class="text-white font-bold">{dailyUsageMB} MB</span>
-                <span class="text-slate-400 font-normal"> / {limits.dailyQuotaMB} MB</span>
-                <span class="text-indigo-400 font-bold ml-1.5">({dailyUsagePercent}%)</span>
-              {:else}
-                <span class="text-white font-bold">{dailyUsageMB} MB</span>
-                <span class="text-emerald-400 ml-1.5 font-medium">(Uncapped)</span>
-              {/if}
-            </div>
-          </div>
-          <ProgressBar
-            percent={dailyUsagePercent}
-            color={dailyUsagePercent > 90 ? 'rose' : (dailyUsagePercent > 75 ? 'amber' : 'indigo')}
-          />
-        </div>
-
-        <!-- Quota Controls Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Daily Limit Panel -->
-          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
-            <div class="flex items-center justify-between">
-              <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="daily-quota">
-                <span>Daily Limit</span>
-              </label>
-              <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
-                {formatMbHuman(limits.dailyQuotaMB)}
-              </span>
-            </div>
-
-            <div class="relative flex items-center">
-              <input
-                id="daily-quota"
-                type="number"
-                min="0"
-                step="128"
-                bind:value={limits.dailyQuotaMB}
-                oninput={() => (quotaDirty = true)}
-                class="w-full bg-slate-900 border border-white/10 rounded-lg py-2 pl-3 pr-12 font-mono text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="0 for unlimited"
-              />
-              <span class="absolute right-3 text-xs text-slate-400 font-mono pointer-events-none">
-                MB
-              </span>
-            </div>
-
-            <!-- Quick Presets -->
-            <div class="space-y-1">
-              <div class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
-                Quick Presets:
+        <div class="flex flex-col gap-4 text-xs">
+          <!-- Daily Consumption Progress -->
+          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-2.5">
+            <div class="flex items-center justify-between text-[11px]">
+              <div class="flex items-center gap-1.5 text-slate-400">
+                <Sliders class="w-3.5 h-3.5 text-indigo-400" />
+                <span>Today's Guest Fleet Consumption</span>
               </div>
-              <div class="grid grid-cols-4 gap-1.5">
-                {#each DAILY_QUOTA_PRESETS as p}
-                  <button
-                    type="button"
-                    onclick={() => applyDailyQuotaPreset(p.value)}
-                    class="py-1 px-1.5 rounded-lg text-center transition-all border {limits.dailyQuotaMB === p.value ? 'bg-indigo-600/30 border-indigo-500 text-white font-semibold' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/5 text-slate-300'}"
-                  >
-                    <div class="text-[11px] font-medium leading-tight">{p.label}</div>
-                  </button>
-                {/each}
+              <div class="font-mono text-white font-semibold">
+                {#if limits.dailyQuotaMB > 0}
+                  <span class="text-white font-bold">{dailyUsageMB} MB</span>
+                  <span class="text-slate-400 font-normal"> / {limits.dailyQuotaMB} MB</span>
+                  <span class="text-indigo-400 font-bold ml-1.5">({dailyUsagePercent}%)</span>
+                {:else}
+                  <span class="text-white font-bold">{dailyUsageMB} MB</span>
+                  <span class="text-emerald-400 ml-1.5 font-medium">(Uncapped)</span>
+                {/if}
               </div>
             </div>
+            <ProgressBar
+              percent={dailyUsagePercent}
+              color={dailyUsagePercent > 90 ? 'rose' : (dailyUsagePercent > 75 ? 'amber' : 'indigo')}
+            />
           </div>
 
-          <!-- Hourly Limit Panel -->
-          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
-            <div class="flex items-center justify-between">
-              <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="hourly-quota">
-                <span>Hourly Limit</span>
-              </label>
-              <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
-                {formatMbHuman(limits.hourlyQuotaMB)}
-              </span>
-            </div>
+          <!-- Quota Controls Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Daily Limit Panel -->
+            <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="daily-quota">
+                    <span>Daily Limit</span>
+                  </label>
+                  <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
+                    {formatMbHuman(limits.dailyQuotaMB)}
+                  </span>
+                </div>
 
-            <div class="relative flex items-center">
-              <input
-                id="hourly-quota"
-                type="number"
-                min="0"
-                step="64"
-                bind:value={limits.hourlyQuotaMB}
-                oninput={() => (quotaDirty = true)}
-                class="w-full bg-slate-900 border border-white/10 rounded-lg py-2 pl-3 pr-12 font-mono text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="0 for uncapped"
-              />
-              <span class="absolute right-3 text-xs text-slate-400 font-mono pointer-events-none">
-                MB
-              </span>
-            </div>
-
-            <!-- Quick Presets -->
-            <div class="space-y-1">
-              <div class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
-                Quick Presets:
+                <div class="relative flex items-center">
+                  <input
+                    id="daily-quota"
+                    type="number"
+                    min="0"
+                    step="128"
+                    bind:value={limits.dailyQuotaMB}
+                    oninput={() => (quotaDirty = true)}
+                    class="w-full bg-slate-900 border border-white/10 rounded-lg py-2 pl-3 pr-12 font-mono text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="0 for unlimited"
+                  />
+                  <span class="absolute right-3 text-xs text-slate-400 font-mono pointer-events-none">
+                    MB
+                  </span>
+                </div>
               </div>
-              <div class="grid grid-cols-4 gap-1.5">
-                {#each HOURLY_QUOTA_PRESETS as p}
-                  <button
-                    type="button"
-                    onclick={() => applyHourlyQuotaPreset(p.value)}
-                    class="py-1 px-1.5 rounded-lg text-center transition-all border {limits.hourlyQuotaMB === p.value ? 'bg-indigo-600/30 border-indigo-500 text-white font-semibold' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/5 text-slate-300'}"
-                  >
-                    <div class="text-[11px] font-medium leading-tight">{p.label}</div>
-                  </button>
-                {/each}
+
+              <!-- Quick Presets -->
+              <div class="space-y-1 pt-1">
+                <div class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+                  Quick Presets:
+                </div>
+                <div class="grid grid-cols-2 gap-1.5">
+                  {#each DAILY_QUOTA_PRESETS as p}
+                    <button
+                      type="button"
+                      onclick={() => applyDailyQuotaPreset(p.value)}
+                      class="py-1.5 px-2 rounded-lg text-center transition-all border {limits.dailyQuotaMB === p.value ? 'bg-indigo-600/30 border-indigo-500 text-white font-semibold' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/5 text-slate-300'}"
+                    >
+                      <div class="text-[11px] font-medium leading-tight">{p.label}</div>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            </div>
+
+            <!-- Hourly Limit Panel -->
+            <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="hourly-quota">
+                    <span>Hourly Limit</span>
+                  </label>
+                  <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
+                    {formatMbHuman(limits.hourlyQuotaMB)}
+                  </span>
+                </div>
+
+                <div class="relative flex items-center">
+                  <input
+                    id="hourly-quota"
+                    type="number"
+                    min="0"
+                    step="64"
+                    bind:value={limits.hourlyQuotaMB}
+                    oninput={() => (quotaDirty = true)}
+                    class="w-full bg-slate-900 border border-white/10 rounded-lg py-2 pl-3 pr-12 font-mono text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="0 for uncapped"
+                  />
+                  <span class="absolute right-3 text-xs text-slate-400 font-mono pointer-events-none">
+                    MB
+                  </span>
+                </div>
+              </div>
+
+              <!-- Quick Presets -->
+              <div class="space-y-1 pt-1">
+                <div class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+                  Quick Presets:
+                </div>
+                <div class="grid grid-cols-2 gap-1.5">
+                  {#each HOURLY_QUOTA_PRESETS as p}
+                    <button
+                      type="button"
+                      onclick={() => applyHourlyQuotaPreset(p.value)}
+                      class="py-1.5 px-2 rounded-lg text-center transition-all border {limits.hourlyQuotaMB === p.value ? 'bg-indigo-600/30 border-indigo-500 text-white font-semibold' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/5 text-slate-300'}"
+                    >
+                      <div class="text-[11px] font-medium leading-tight">{p.label}</div>
+                    </button>
+                  {/each}
+                </div>
               </div>
             </div>
           </div>
@@ -768,7 +780,7 @@
       </div>
 
       <!-- Card Action Footer -->
-      <div class="flex items-center justify-between pt-4 mt-4 border-t border-white/10">
+      <div class="flex items-center justify-between pt-4 mt-auto border-t border-white/10">
         <div class="text-[11px] text-slate-400">
           {#if quotaDirty}
             <span class="inline-flex items-center gap-1.5 text-amber-400 font-medium">
@@ -796,6 +808,43 @@
       </div>
     </Card>
   </div>
+
+  <!-- Functional Verification & Testing Helper Card -->
+  <Card class="border border-indigo-500/20 bg-indigo-500/[0.03]">
+    <div class="flex items-start gap-4">
+      <div class="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0 shadow">
+        <Shield class="w-5 h-5" />
+      </div>
+      <div class="flex-1 min-w-0 space-y-2.5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 class="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+            <span>How to Test & Verify Curfew Functionality</span>
+          </h3>
+          <span class="px-2.5 py-1 rounded-full text-[11px] font-mono font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 w-fit">
+            Router Clock: {limits.currentTime || '--:--'}
+          </span>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Curfew triggers automatically whenever the router's internal clock falls between Bedtime and Wake-up. 
+          When active, stations marked as <strong>Enrolled (Protected)</strong> in the Device Inventory have their DNS lookups blocked by MicroRouter's DNS engine.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
+          <div class="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+            <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">1. Check Router Time</span>
+            <span class="text-slate-400 text-[11px] mt-1 block">Current router time is <strong class="text-white font-mono">{limits.currentTime || '--:--'}</strong>. Set Bedtime earlier and Wake-up later.</span>
+          </div>
+          <div class="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+            <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">2. Save & Observe</span>
+            <span class="text-slate-400 text-[11px] mt-1 block">Click "Save Curfew". The top status pill turns into <strong class="text-purple-300 font-semibold">Lock Active</strong>.</span>
+          </div>
+          <div class="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+            <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">3. Test Device & Waiver</span>
+            <span class="text-slate-400 text-[11px] mt-1 block">Try opening a site on a protected phone. Grant a +15m waiver to verify immediate bypass.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Card>
 
   <!-- Active Temporary Waivers Table -->
   <Card>

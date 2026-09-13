@@ -9,10 +9,11 @@ function getGitVersion() {
     try {
       execSync('git fetch --tags -q', { timeout: 2000, stdio: 'ignore' })
     } catch {}
-    const tag = execSync('git describe --tags --always').toString().trim()
-    return tag.replace(/^v/, '')
+    const tag = execSync('git describe --tags --abbrev=0').toString().trim()
+    const clean = tag.replace(/^v/, '').replace(/-.*$/, '')
+    return clean || '1.0.6'
   } catch {
-    return '1.0.5'
+    return '1.0.6'
   }
 }
 
