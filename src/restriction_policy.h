@@ -71,3 +71,19 @@ inline ClientRestrictionReason evaluateClientRestrictionDetail(const ClientRestr
 inline bool evaluateClientRestriction(const ClientRestrictionInput& in) {
     return evaluateClientRestrictionDetail(in) != RESTRICTION_NONE;
 }
+
+/**
+ * Pure domain policy for resolving whether a client device is enrolled in parental controls:
+ * 1. If admin explicitly disabled parental control for this MAC -> false.
+ * 2. If admin explicitly enabled parental control for this MAC -> true.
+ * 3. Default for newly connected device: true if connection is a Guest connection (SoftAP / 192.168.4.x), false otherwise.
+ */
+inline bool resolveParentalEnrollment(bool explicitlyDisabled, bool explicitlyEnabled, bool isGuestConnection) {
+    if (explicitlyDisabled) {
+        return false;
+    }
+    if (explicitlyEnabled) {
+        return true;
+    }
+    return isGuestConnection;
+}

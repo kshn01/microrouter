@@ -377,6 +377,25 @@ void test_profile_merge_policy() {
                                             "86:7a:52:d5:98:33", "POCO-M5"));
 }
 
+void test_parental_enrollment_policy() {
+    // New guest connection without explicit admin override -> enabled by default
+    TEST_ASSERT_TRUE(resolveParentalEnrollment(false, false, true));
+
+    // New home (non-guest) connection without explicit admin override -> disabled by default
+    TEST_ASSERT_FALSE(resolveParentalEnrollment(false, false, false));
+
+    // Admin explicitly disabled device -> MUST remain disabled even on guest connection
+    TEST_ASSERT_FALSE(resolveParentalEnrollment(true, false, true));
+    TEST_ASSERT_FALSE(resolveParentalEnrollment(true, false, false));
+
+    // Admin explicitly enabled device -> MUST be enabled even on home connection
+    TEST_ASSERT_TRUE(resolveParentalEnrollment(false, true, false));
+    TEST_ASSERT_TRUE(resolveParentalEnrollment(false, true, true));
+
+    // If somehow both flags set, explicit disable takes safety precedence
+    TEST_ASSERT_FALSE(resolveParentalEnrollment(true, true, true));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_disabled_schedule_is_inactive);
@@ -407,5 +426,6 @@ int main() {
     RUN_TEST(test_is_randomized_mac);
     RUN_TEST(test_generic_hostnames);
     RUN_TEST(test_profile_merge_policy);
+    RUN_TEST(test_parental_enrollment_policy);
     return UNITY_END();
 }

@@ -81,6 +81,7 @@ private:
     void _loadBlockedMacs();
     void _saveParentalMacs();
     void _loadParentalMacs();
+    bool _resolveParentalControl(const String& mac, const String& band, const String& ip) const;
     void _scanSoftAPStations();
     void _rollUsageWindows(ClientDevice& device);
     String _resolveArpMac(const char* ipStr) const;

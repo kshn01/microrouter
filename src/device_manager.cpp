@@ -9,6 +9,46 @@
 #include <lwip/etharp.h>
 #include <esp_wifi.h>
 
+static bool macListContains(const String& list, const String& mac) {
+    if (list.length() == 0 || mac.length() == 0) return false;
+    int start = 0;
+    while (start < (int)list.length()) {
+        int comma = list.indexOf(',', start);
+        if (comma < 0) comma = list.length();
+        String item = list.substring(start, comma);
+        item.trim();
+        if (item.equalsIgnoreCase(mac)) {
+            return true;
+        }
+        start = comma + 1;
+    }
+    return false;
+}
+
+static String macListAdd(const String& list, const String& mac) {
+    if (macListContains(list, mac)) return list;
+    if (list.length() == 0) return mac;
+    return list + "," + mac;
+}
+
+static String macListRemove(const String& list, const String& mac) {
+    if (list.length() == 0 || mac.length() == 0) return "";
+    String result = "";
+    int start = 0;
+    while (start < (int)list.length()) {
+        int comma = list.indexOf(',', start);
+        if (comma < 0) comma = list.length();
+        String item = list.substring(start, comma);
+        item.trim();
+        if (item.length() > 0 && !item.equalsIgnoreCase(mac)) {
+            if (result.length() > 0) result += ",";
+            result += item;
+        }
+        start = comma + 1;
+    }
+    return result;
+}
+
 DeviceManager deviceManager;
 
 void DeviceManager::begin() {
@@ -185,6 +225,12 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
         if (strlen(_devices[idx].ip) == 0 || strcmp(_devices[idx].ip, "0.0.0.0") == 0) {
             strncpy(_devices[idx].ip, ip, sizeof(_devices[idx].ip) - 1);
         }
+        bool isSoftApSubnet = (strncmp(ip, "192.168.4.", 10) == 0);
+        if (isSoftApSubnet && !_devices[idx].parentalControl && _resolveParentalControl(_devices[idx].mac, "Guest", ip)) {
+            strcpy(_devices[idx].band, "Guest");
+            _devices[idx].parentalControl = true;
+            invalidateRestrictionCache();
+        }
         if (hostnameHint && strlen(hostnameHint) > 0 &&
             (_devices[idx].hostname[0] == '\0' || strcmp(_devices[idx].hostname, "Unknown") == 0)) {
             // Extract top-level domain as hint if appropriate
@@ -210,6 +256,7 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
         _devices[idx].rssi = 0;
         _devices[idx].online = true;
         _devices[idx].blocked = false;
+        _devices[idx].parentalControl = _resolveParentalControl(mac, _devices[idx].band, ip);
         _devices[idx].dlBytes = 128;
         _devices[idx].ulBytes = 64;
         _devices[idx].hourlyUsageBytes = 192;
@@ -389,6 +436,11 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         }
         if (band.length() > 0) {
             strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
+            _devices[idx].band[sizeof(_devices[idx].band) - 1] = '\0';
+            if (!_devices[idx].parentalControl && _resolveParentalControl(_devices[idx].mac, _devices[idx].band, _devices[idx].ip)) {
+                _devices[idx].parentalControl = true;
+                invalidateRestrictionCache();
+            }
         }
         if (rssi != 0) _devices[idx].rssi = rssi;
         _devices[idx].online = online;
@@ -453,20 +505,7 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
             _devices[idx].rssi = rssi;
             _devices[idx].online = online;
             _devices[idx].blocked = false;
-
-            Preferences pPrefs;
-            bool hasSavedPref = false;
-            if (pPrefs.begin("dev_parental", true)) {
-                if (pPrefs.isKey("macs")) {
-                    hasSavedPref = true;
-                    String pList = pPrefs.getString("macs", "");
-                    _devices[idx].parentalControl = (pList.indexOf(mac) >= 0);
-                }
-                pPrefs.end();
-            }
-            if (!hasSavedPref) {
-                _devices[idx].parentalControl = (strcasecmp(band.c_str(), "Guest") == 0);
-            }
+            _devices[idx].parentalControl = _resolveParentalControl(mac, band, ip);
 
             _devices[idx].dlBytes = dl;
             _devices[idx].ulBytes = ul;
@@ -603,8 +642,23 @@ bool DeviceManager::setParentalControl(const String& mac, bool enabled) {
     }
     if (_mutex) xSemaphoreGive(_mutex);
 
+    Preferences prefs;
+    if (prefs.begin("dev_parental", false)) {
+        String pList = prefs.getString("macs", "");
+        String disList = prefs.getString("dis_macs", "");
+        if (enabled) {
+            pList = macListAdd(pList, mac);
+            disList = macListRemove(disList, mac);
+        } else {
+            pList = macListRemove(pList, mac);
+            disList = macListAdd(disList, mac);
+        }
+        prefs.putString("macs", pList);
+        prefs.putString("dis_macs", disList);
+        prefs.end();
+    }
+
     invalidateRestrictionCache();
-    _saveParentalMacs();
     return found;
 }
 
@@ -809,43 +863,67 @@ void DeviceManager::_loadBlockedMacs() {
 void DeviceManager::_saveParentalMacs() {
     Preferences prefs;
     if (prefs.begin("dev_parental", false)) {
-        String parentalList = "";
+        String pList = prefs.getString("macs", "");
+        String disList = prefs.getString("dis_macs", "");
         if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
         for (size_t i = 0; i < _deviceCount; i++) {
             if (_devices[i].parentalControl) {
-                if (parentalList.length() > 0) parentalList += ",";
-                parentalList += _devices[i].mac;
+                pList = macListAdd(pList, _devices[i].mac);
+                disList = macListRemove(disList, _devices[i].mac);
             }
         }
         if (_mutex) xSemaphoreGive(_mutex);
-        prefs.putString("macs", parentalList);
+        prefs.putString("macs", pList);
+        prefs.putString("dis_macs", disList);
         prefs.end();
     }
 }
 
 void DeviceManager::_loadParentalMacs() {
     Preferences prefs;
+    String pList = "";
+    String disList = "";
     if (prefs.begin("dev_parental", true)) {
-        String list = prefs.getString("macs", "");
+        pList = prefs.getString("macs", "");
+        disList = prefs.getString("dis_macs", "");
         prefs.end();
+    }
 
-        if (list.length() > 0) {
-            int start = 0;
-            while (start < (int)list.length()) {
-                int comma = list.indexOf(',', start);
-                if (comma < 0) comma = list.length();
-                String mac = list.substring(start, comma);
-                mac.trim();
-                if (mac.length() > 0) {
-                    int idx = _findDeviceIndex(mac);
-                    if (idx >= 0) {
-                        _devices[idx].parentalControl = true;
-                    }
-                }
-                start = comma + 1;
-            }
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    for (size_t i = 0; i < _deviceCount; i++) {
+        const char* dMac = _devices[i].mac;
+        if (macListContains(disList, dMac)) {
+            _devices[i].parentalControl = false;
+        } else if (macListContains(pList, dMac)) {
+            _devices[i].parentalControl = true;
+        } else {
+            bool isGuest = (strcasecmp(_devices[i].band, "Guest") == 0) ||
+                           (strncmp(_devices[i].ip, "192.168.4.", 10) == 0);
+            _devices[i].parentalControl = resolveParentalEnrollment(false, false, isGuest);
         }
     }
+    if (_mutex) xSemaphoreGive(_mutex);
+}
+
+bool DeviceManager::_resolveParentalControl(const String& mac, const String& band, const String& ip) const {
+    if (mac.length() == 0) return false;
+
+    Preferences prefs;
+    bool explicitlyDisabled = false;
+    bool explicitlyEnabled = false;
+
+    if (prefs.begin("dev_parental", true)) {
+        String disList = prefs.getString("dis_macs", "");
+        explicitlyDisabled = macListContains(disList, mac);
+        if (!explicitlyDisabled) {
+            String pList = prefs.getString("macs", "");
+            explicitlyEnabled = macListContains(pList, mac);
+        }
+        prefs.end();
+    }
+
+    bool isGuest = (strcasecmp(band.c_str(), "Guest") == 0) || ip.startsWith("192.168.4.");
+    return resolveParentalEnrollment(explicitlyDisabled, explicitlyEnabled, isGuest);
 }
 
 void DeviceManager::clearAllUsage() {
