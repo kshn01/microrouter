@@ -50,6 +50,7 @@ public:
     // Temporal Waivers
     bool grantWaiver(const String& mac, uint32_t durationSecs, bool isAdminOverride = false);
     bool revokeWaiver(const String& mac);
+    bool transferWaiver(const String& oldMac, const String& newMac);
     bool hasActiveWaiver(const String& mac) const;
     uint32_t getWaiverRemainingSecs(const String& mac) const;
     uint8_t getWaiverCountToday(const String& mac) const;

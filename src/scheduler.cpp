@@ -180,6 +180,38 @@ bool Scheduler::revokeWaiver(const String& mac) {
     return false;
 }
 
+bool Scheduler::transferWaiver(const String& oldMac, const String& newMac) {
+    if (oldMac.length() == 0 || newMac.length() == 0 || oldMac.equalsIgnoreCase(newMac)) return false;
+
+    int oldIdx = -1;
+    int newIdx = -1;
+    for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {
+        if (strcasecmp(_waivers[i].mac, oldMac.c_str()) == 0) oldIdx = i;
+        if (strcasecmp(_waivers[i].mac, newMac.c_str()) == 0) newIdx = i;
+    }
+    if (oldIdx < 0) return false;
+
+    if (newIdx >= 0) {
+        if (_waivers[oldIdx].expireEpoch > _waivers[newIdx].expireEpoch) {
+            _waivers[newIdx].expireEpoch = _waivers[oldIdx].expireEpoch;
+        }
+        if (_waivers[oldIdx].waiverCountToday > _waivers[newIdx].waiverCountToday) {
+            _waivers[newIdx].waiverCountToday = _waivers[oldIdx].waiverCountToday;
+        }
+        if (_waivers[oldIdx].active) {
+            _waivers[newIdx].active = true;
+        }
+        _waivers[oldIdx].active = false;
+        _waivers[oldIdx].mac[0] = '\0';
+    } else {
+        strncpy(_waivers[oldIdx].mac, newMac.c_str(), sizeof(_waivers[oldIdx].mac) - 1);
+        _waivers[oldIdx].mac[sizeof(_waivers[oldIdx].mac) - 1] = '\0';
+    }
+    _saveWaivers();
+    Serial.printf("[Scheduler] Transferred waiver from %s to %s\n", oldMac.c_str(), newMac.c_str());
+    return true;
+}
+
 bool Scheduler::hasActiveWaiver(const String& mac) const {
     time_t now = time(nullptr);
     for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {

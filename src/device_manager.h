@@ -4,6 +4,7 @@
 #include <vector>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include "device_fingerprint_policy.h"
 #include "restriction_policy.h"
 
 // ╔══════════════════════════════════════════════════════════════╗
@@ -86,6 +87,21 @@ private:
     void _loadGuestHistory();
     void _saveGuestHistory();
     void _archiveDayToHistory(const ClientDevice& device, uint32_t completedEpochDay);
+
+    // Anti-MAC Randomization & Profile Merging
+    struct RotatedMacTombstone {
+        char     oldMac[18];
+        char     canonicalMac[18];
+        uint32_t retiredAtSec;
+    };
+    static constexpr size_t MAX_TOMBSTONES = 32;
+    RotatedMacTombstone _tombstones[MAX_TOMBSTONES] = {};
+    size_t              _tombstoneHead = 0;
+
+    void _recordTombstone(const char* oldMac, const char* canonicalMac);
+    const char* _findTombstoneCanonical(const char* mac) const;
+    void _mergeDeviceProfiles(size_t targetIdx, size_t sourceIdx);
+    void _checkHostnameMerge(size_t idx);
 
     struct RestrictionCacheEntry {
         char                    ip[16];

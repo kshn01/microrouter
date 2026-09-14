@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "device_fingerprint_policy.h"
 #include "dns_policy.h"
 #include "rate_limiter.h"
 #include "restriction_policy.h"
@@ -217,6 +218,81 @@ void test_waiver_limit_and_pin_policy() {
     TEST_ASSERT_FALSE(verifyWaiverPin("1234", ""));
 }
 
+void test_is_randomized_mac() {
+    // Randomized MAC addresses from real-world devices observed in network
+    TEST_ASSERT_TRUE(isRandomizedMac("1a:e0:88:51:57:eb")); // 'a'
+    TEST_ASSERT_TRUE(isRandomizedMac("6e:1b:fb:85:26:ca")); // 'e'
+    TEST_ASSERT_TRUE(isRandomizedMac("0a:09:3e:eb:72:cf")); // 'a'
+    TEST_ASSERT_TRUE(isRandomizedMac("12:1c:1e:50:8d:e0")); // '2'
+    TEST_ASSERT_TRUE(isRandomizedMac("86:7a:52:d5:98:33")); // '6'
+    TEST_ASSERT_TRUE(isRandomizedMac("7a:11:22:33:44:55")); // 'a'
+    TEST_ASSERT_TRUE(isRandomizedMac("FE:AA:BB:CC:DD:EE")); // 'E'
+
+    // Burned-in manufacturer hardware MACs
+    TEST_ASSERT_FALSE(isRandomizedMac("24:0a:c4:00:11:22")); // Espressif (4)
+    TEST_ASSERT_FALSE(isRandomizedMac("10:b2:32:87:9b:12")); // Hisense (0)
+    TEST_ASSERT_FALSE(isRandomizedMac("d4:c1:c8:11:22:33")); // ZTE (4)
+    TEST_ASSERT_FALSE(isRandomizedMac("f0:18:98:12:34:56")); // Apple (0)
+    TEST_ASSERT_FALSE(isRandomizedMac("b8:27:eb:11:22:33")); // Raspberry Pi (8)
+    TEST_ASSERT_FALSE(isRandomizedMac("00:15:5d:11:22:33")); // Microsoft (0)
+
+    // Synthetic local ARP placeholders
+    TEST_ASSERT_FALSE(isRandomizedMac("02:00:c0:a8:01:05"));
+    TEST_ASSERT_FALSE(isRandomizedMac(nullptr));
+    TEST_ASSERT_FALSE(isRandomizedMac(""));
+}
+
+void test_generic_hostnames() {
+    TEST_ASSERT_TRUE(isGenericHostname(nullptr));
+    TEST_ASSERT_TRUE(isGenericHostname(""));
+    TEST_ASSERT_TRUE(isGenericHostname("   "));
+    TEST_ASSERT_TRUE(isGenericHostname("x"));
+    TEST_ASSERT_TRUE(isGenericHostname("unknown"));
+    TEST_ASSERT_TRUE(isGenericHostname("UNKNOWN"));
+    TEST_ASSERT_TRUE(isGenericHostname("localhost"));
+    TEST_ASSERT_TRUE(isGenericHostname("android"));
+    TEST_ASSERT_TRUE(isGenericHostname("iPhone"));
+    TEST_ASSERT_TRUE(isGenericHostname("IPHONE"));
+    TEST_ASSERT_TRUE(isGenericHostname("iPad"));
+    TEST_ASSERT_TRUE(isGenericHostname("client"));
+    TEST_ASSERT_TRUE(isGenericHostname("device"));
+    TEST_ASSERT_TRUE(isGenericHostname("pc"));
+
+    // Specific, device-identifying hostnames
+    TEST_ASSERT_FALSE(isGenericHostname("motorola-edge-40-neo"));
+    TEST_ASSERT_FALSE(isGenericHostname("MAC-65D18C"));
+    TEST_ASSERT_FALSE(isGenericHostname("POCO-M5"));
+    TEST_ASSERT_FALSE(isGenericHostname("Kishan's iPhone"));
+    TEST_ASSERT_FALSE(isGenericHostname("Galaxy-S21-Ultra"));
+    TEST_ASSERT_FALSE(isGenericHostname("DESKTOP-ABC1234"));
+}
+
+void test_profile_merge_policy() {
+    // Reconnecting device with rotated randomized MAC (same specific hostname)
+    TEST_ASSERT_TRUE(canMergeDeviceProfiles("0a:09:3e:eb:72:cf", "motorola-edge-40-neo",
+                                           "86:7a:52:d5:98:33", "motorola-edge-40-neo"));
+    TEST_ASSERT_TRUE(canMergeDeviceProfiles("6e:1b:fb:85:26:ca", "MAC-65D18C",
+                                           "1a:e0:88:51:57:eb", "MAC-65D18C"));
+
+    // Same MAC should not merge
+    TEST_ASSERT_FALSE(canMergeDeviceProfiles("1a:e0:88:51:57:eb", "MAC-65D18C",
+                                            "1a:e0:88:51:57:eb", "MAC-65D18C"));
+
+    // Generic hostnames must NOT merge two devices
+    TEST_ASSERT_FALSE(canMergeDeviceProfiles("0a:09:3e:eb:72:cf", "iPhone",
+                                            "86:7a:52:d5:98:33", "iPhone"));
+    TEST_ASSERT_FALSE(canMergeDeviceProfiles("0a:09:3e:eb:72:cf", "android",
+                                            "86:7a:52:d5:98:33", "android"));
+
+    // Two distinct factory hardware MACs must NOT merge even if hostnames match
+    TEST_ASSERT_FALSE(canMergeDeviceProfiles("24:0a:c4:00:11:22", "esp32-node",
+                                            "10:b2:32:87:9b:12", "esp32-node"));
+
+    // Different hostnames must NOT merge
+    TEST_ASSERT_FALSE(canMergeDeviceProfiles("0a:09:3e:eb:72:cf", "motorola-edge-40-neo",
+                                            "86:7a:52:d5:98:33", "POCO-M5"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_disabled_schedule_is_inactive);
@@ -237,5 +313,8 @@ int main() {
     RUN_TEST(test_waiver_limit_and_pin_policy);
     RUN_TEST(test_rate_limiter_burst_and_replenish);
     RUN_TEST(test_rate_limiter_isolates_ips);
+    RUN_TEST(test_is_randomized_mac);
+    RUN_TEST(test_generic_hostnames);
+    RUN_TEST(test_profile_merge_policy);
     return UNITY_END();
 }

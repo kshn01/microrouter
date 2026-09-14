@@ -21,6 +21,22 @@ void DeviceManager::begin() {
     _loadBlockedMacs();
     _loadParentalMacs();
     _loadGuestHistory();
+
+    // Consolidate any duplicate profiles from initial load
+    if (_deviceCount > 1) {
+        bool merged = false;
+        if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+        for (size_t i = 0; i < _deviceCount; i++) {
+            _checkHostnameMerge(i);
+            merged = true;
+        }
+        if (_mutex) xSemaphoreGive(_mutex);
+        if (merged) {
+            _saveParentalMacs();
+            _saveBlockedMacs();
+        }
+    }
+
     Serial.println("[DeviceManager] Initialized with active network discovery & ARP monitoring.");
 }
 
@@ -60,12 +76,19 @@ void DeviceManager::loop() {
         if (probeIp.length() > 0) {
             String resolved = queryNetBIOS(probeIp);
             if (resolved.length() > 0 && targetIdx >= 0) {
+                bool merged = false;
                 if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
                 if ((size_t)targetIdx < _deviceCount) {
                     strncpy(_devices[targetIdx].hostname, resolved.c_str(), sizeof(_devices[targetIdx].hostname) - 1);
                     _devices[targetIdx].hostname[sizeof(_devices[targetIdx].hostname) - 1] = '\0';
+                    _checkHostnameMerge(targetIdx);
+                    merged = true;
                 }
                 if (_mutex) xSemaphoreGive(_mutex);
+                if (merged) {
+                    _saveParentalMacs();
+                    _saveBlockedMacs();
+                }
             }
         }
     }
@@ -170,6 +193,8 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
                 // Don't set full FQDNs like api.facebook.com as hostname, but keep local names
                 if (strstr(hostnameHint, ".local") != nullptr) {
                     strncpy(_devices[idx].hostname, hostnameHint, sizeof(_devices[idx].hostname) - 1);
+                    _devices[idx].hostname[sizeof(_devices[idx].hostname) - 1] = '\0';
+                    _checkHostnameMerge(idx);
                 }
             }
         }
@@ -199,12 +224,130 @@ void DeviceManager::registerClientActivity(const char* ip, const char* hostnameH
     if (_mutex) xSemaphoreGive(_mutex);
 }
 
+void DeviceManager::_recordTombstone(const char* oldMac, const char* canonicalMac) {
+    if (!oldMac || !canonicalMac || strcasecmp(oldMac, canonicalMac) == 0) return;
+    uint32_t nowSec = millis() / 1000;
+
+    // Check if oldMac is already in tombstones
+    for (size_t i = 0; i < MAX_TOMBSTONES; i++) {
+        if (_tombstones[i].oldMac[0] != '\0' && strcasecmp(_tombstones[i].oldMac, oldMac) == 0) {
+            strncpy(_tombstones[i].canonicalMac, canonicalMac, sizeof(_tombstones[i].canonicalMac) - 1);
+            _tombstones[i].canonicalMac[sizeof(_tombstones[i].canonicalMac) - 1] = '\0';
+            _tombstones[i].retiredAtSec = nowSec;
+            return;
+        }
+    }
+
+    // Transitive aliasing: update any existing tombstones that pointed to oldMac
+    for (size_t i = 0; i < MAX_TOMBSTONES; i++) {
+        if (_tombstones[i].oldMac[0] != '\0' && strcasecmp(_tombstones[i].canonicalMac, oldMac) == 0) {
+            strncpy(_tombstones[i].canonicalMac, canonicalMac, sizeof(_tombstones[i].canonicalMac) - 1);
+            _tombstones[i].canonicalMac[sizeof(_tombstones[i].canonicalMac) - 1] = '\0';
+        }
+    }
+
+    // Insert new tombstone
+    strncpy(_tombstones[_tombstoneHead].oldMac, oldMac, sizeof(_tombstones[_tombstoneHead].oldMac) - 1);
+    _tombstones[_tombstoneHead].oldMac[sizeof(_tombstones[_tombstoneHead].oldMac) - 1] = '\0';
+    strncpy(_tombstones[_tombstoneHead].canonicalMac, canonicalMac, sizeof(_tombstones[_tombstoneHead].canonicalMac) - 1);
+    _tombstones[_tombstoneHead].canonicalMac[sizeof(_tombstones[_tombstoneHead].canonicalMac) - 1] = '\0';
+    _tombstones[_tombstoneHead].retiredAtSec = nowSec;
+    _tombstoneHead = (_tombstoneHead + 1) % MAX_TOMBSTONES;
+    Serial.printf("[DeviceManager] Anti-MAC: Registered alias tombstone %s -> %s\n", oldMac, canonicalMac);
+}
+
+const char* DeviceManager::_findTombstoneCanonical(const char* mac) const {
+    if (!mac || mac[0] == '\0') return nullptr;
+    for (size_t i = 0; i < MAX_TOMBSTONES; i++) {
+        if (_tombstones[i].oldMac[0] != '\0' && strcasecmp(_tombstones[i].oldMac, mac) == 0) {
+            return _tombstones[i].canonicalMac;
+        }
+    }
+    return nullptr;
+}
+
+void DeviceManager::_mergeDeviceProfiles(size_t targetIdx, size_t sourceIdx) {
+    if (targetIdx >= _deviceCount || sourceIdx >= _deviceCount || targetIdx == sourceIdx) return;
+
+    char sourceMac[18];
+    char targetMac[18];
+    strncpy(sourceMac, _devices[sourceIdx].mac, sizeof(sourceMac) - 1);
+    sourceMac[sizeof(sourceMac) - 1] = '\0';
+    strncpy(targetMac, _devices[targetIdx].mac, sizeof(targetMac) - 1);
+    targetMac[sizeof(targetMac) - 1] = '\0';
+
+    Serial.printf("[DeviceManager] Anti-MAC: Merging profile %s (%s) into %s (%s)\n",
+                  sourceMac, _devices[sourceIdx].hostname, targetMac, _devices[targetIdx].hostname);
+
+    // 1. Accumulate usage counters into target
+    _devices[targetIdx].dlBytes += _devices[sourceIdx].dlBytes;
+    _devices[targetIdx].ulBytes += _devices[sourceIdx].ulBytes;
+    _devices[targetIdx].hourlyUsageBytes += _devices[sourceIdx].hourlyUsageBytes;
+    _devices[targetIdx].dailyUsageBytes += _devices[sourceIdx].dailyUsageBytes;
+    if (_devices[sourceIdx].hourlyLimitHitCount > _devices[targetIdx].hourlyLimitHitCount) {
+        _devices[targetIdx].hourlyLimitHitCount = _devices[sourceIdx].hourlyLimitHitCount;
+    }
+
+    // 2. Inherit parental control and blocked flags
+    _devices[targetIdx].parentalControl = _devices[targetIdx].parentalControl || _devices[sourceIdx].parentalControl;
+    _devices[targetIdx].blocked = _devices[targetIdx].blocked || _devices[sourceIdx].blocked;
+
+    // 3. Inherit hostname if target is generic
+    if (isGenericHostname(_devices[targetIdx].hostname) && !isGenericHostname(_devices[sourceIdx].hostname)) {
+        strncpy(_devices[targetIdx].hostname, _devices[sourceIdx].hostname, sizeof(_devices[targetIdx].hostname) - 1);
+        _devices[targetIdx].hostname[sizeof(_devices[targetIdx].hostname) - 1] = '\0';
+    }
+
+    // 4. Transfer active waivers in scheduler
+    scheduler.transferWaiver(sourceMac, targetMac);
+
+    // 5. Record tombstone alias
+    _recordTombstone(sourceMac, targetMac);
+
+    // 6. Remove source duplicate from array
+    for (size_t k = sourceIdx; k + 1 < _deviceCount; k++) {
+        _devices[k] = _devices[k + 1];
+    }
+    _deviceCount--;
+
+    invalidateRestrictionCache();
+}
+
+void DeviceManager::_checkHostnameMerge(size_t idx) {
+    if (idx >= _deviceCount) return;
+    if (isGenericHostname(_devices[idx].hostname)) return;
+
+    for (size_t j = 0; j < _deviceCount; j++) {
+        if (j != idx && canMergeDeviceProfiles(_devices[j].mac, _devices[j].hostname, _devices[idx].mac, _devices[idx].hostname)) {
+            _mergeDeviceProfiles(idx, j);
+            break;
+        }
+    }
+}
+
 void DeviceManager::updateDevice(const String& mac, const String& ip, const String& hostname,
                                 const String& band, int8_t rssi, bool online,
                                 uint64_t dl, uint64_t ul) {
     if (mac.length() == 0) return;
 
+    bool needsPrefSave = false;
+
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+
+    // 0. Anti-MAC Randomization: Check if this MAC was retired as a tombstone of an active canonical MAC
+    const char* canonMac = _findTombstoneCanonical(mac.c_str());
+    if (canonMac != nullptr) {
+        int canonIdx = _findDeviceIndex(canonMac);
+        if (canonIdx >= 0) {
+            // Forward any packet traffic to the active canonical device
+            if (dl > 0 || ul > 0) {
+                _devices[canonIdx].hourlyUsageBytes += (dl + ul);
+                _devices[canonIdx].dailyUsageBytes += (dl + ul);
+            }
+            if (_mutex) xSemaphoreGive(_mutex);
+            return;
+        }
+    }
 
     // If updating a genuine hardware MAC with an IP, clean up / merge any synthetic ("02:00:...") entry for this IP
     if (!mac.startsWith("02:00:") && ip.length() > 0) {
@@ -238,7 +381,12 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         uint64_t currentBytes = dl + ul;
         uint64_t deltaBytes = byteCounterDelta(currentBytes, previousBytes);
         if (ip.length() > 0) strncpy(_devices[idx].ip, ip.c_str(), sizeof(_devices[idx].ip) - 1);
-        if (hostname.length() > 0) strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
+        if (hostname.length() > 0) {
+            strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
+            _devices[idx].hostname[sizeof(_devices[idx].hostname) - 1] = '\0';
+            _checkHostnameMerge(idx);
+            needsPrefSave = true;
+        }
         if (band.length() > 0) {
             strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
         }
@@ -251,46 +399,93 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
             _devices[idx].dailyUsageBytes += deltaBytes;
         }
         _devices[idx].lastSeen = nowSec;
-    } else if (_deviceCount < MAX_TRACKED_DEVICES) {
-        idx = _deviceCount++;
-        strncpy(_devices[idx].mac, mac.c_str(), sizeof(_devices[idx].mac) - 1);
-        _devices[idx].mac[sizeof(_devices[idx].mac) - 1] = '\0';
-        strncpy(_devices[idx].ip, ip.c_str(), sizeof(_devices[idx].ip) - 1);
-        _devices[idx].ip[sizeof(_devices[idx].ip) - 1] = '\0';
-        strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
-        _devices[idx].hostname[sizeof(_devices[idx].hostname) - 1] = '\0';
-        strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
-        _devices[idx].band[sizeof(_devices[idx].band) - 1] = '\0';
-        _devices[idx].rssi = rssi;
-        _devices[idx].online = online;
-        _devices[idx].blocked = false;
+    } else {
+        // Device not found by MAC.
+        // Check if an existing device matches this hostname and should be re-keyed to the new MAC (profile takeover)
+        bool mergedWithExisting = false;
+        if (hostname.length() > 0 && !isGenericHostname(hostname.c_str())) {
+            for (size_t i = 0; i < _deviceCount; i++) {
+                if (canMergeDeviceProfiles(_devices[i].mac, _devices[i].hostname, mac.c_str(), hostname.c_str())) {
+                    Serial.printf("[DeviceManager] Anti-MAC: Reconnecting %s (old MAC: %s) with new MAC %s\n",
+                                  _devices[i].hostname, _devices[i].mac, mac.c_str());
+                    _recordTombstone(_devices[i].mac, mac.c_str());
+                    scheduler.transferWaiver(_devices[i].mac, mac);
 
-        Preferences pPrefs;
-        bool hasSavedPref = false;
-        if (pPrefs.begin("dev_parental", true)) {
-            if (pPrefs.isKey("macs")) {
-                hasSavedPref = true;
-                String pList = pPrefs.getString("macs", "");
-                _devices[idx].parentalControl = (pList.indexOf(mac) >= 0);
+                    strncpy(_devices[i].mac, mac.c_str(), sizeof(_devices[i].mac) - 1);
+                    _devices[i].mac[sizeof(_devices[i].mac) - 1] = '\0';
+                    if (ip.length() > 0) {
+                        strncpy(_devices[i].ip, ip.c_str(), sizeof(_devices[i].ip) - 1);
+                        _devices[i].ip[sizeof(_devices[i].ip) - 1] = '\0';
+                    }
+                    if (band.length() > 0) {
+                        strncpy(_devices[i].band, band.c_str(), sizeof(_devices[i].band) - 1);
+                        _devices[i].band[sizeof(_devices[i].band) - 1] = '\0';
+                    }
+                    if (rssi != 0) _devices[i].rssi = rssi;
+                    _devices[i].online = online;
+                    _devices[i].lastSeen = nowSec;
+
+                    if (dl > 0 || ul > 0) {
+                        _devices[i].dlBytes += dl;
+                        _devices[i].ulBytes += ul;
+                        _devices[i].hourlyUsageBytes += (dl + ul);
+                        _devices[i].dailyUsageBytes += (dl + ul);
+                    }
+
+                    invalidateRestrictionCache();
+                    mergedWithExisting = true;
+                    needsPrefSave = true;
+                    break;
+                }
             }
-            pPrefs.end();
-        }
-        if (!hasSavedPref) {
-            _devices[idx].parentalControl = (strcasecmp(band.c_str(), "Guest") == 0);
         }
 
-        _devices[idx].dlBytes = dl;
-        _devices[idx].ulBytes = ul;
-        _devices[idx].hourlyUsageBytes = (dl + ul);
-        _devices[idx].dailyUsageBytes = (dl + ul);
-        _devices[idx].usageHourKey = 0;
-        _devices[idx].usageDayKey = 0;
-        _devices[idx].hourlyLimitHitCount = 0;
-        _devices[idx].lastSeen = nowSec;
-        _devices[idx].netbiosTries = 0;
-        _rollUsageWindows(_devices[idx]);
+        if (!mergedWithExisting && _deviceCount < MAX_TRACKED_DEVICES) {
+            idx = _deviceCount++;
+            strncpy(_devices[idx].mac, mac.c_str(), sizeof(_devices[idx].mac) - 1);
+            _devices[idx].mac[sizeof(_devices[idx].mac) - 1] = '\0';
+            strncpy(_devices[idx].ip, ip.c_str(), sizeof(_devices[idx].ip) - 1);
+            _devices[idx].ip[sizeof(_devices[idx].ip) - 1] = '\0';
+            strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
+            _devices[idx].hostname[sizeof(_devices[idx].hostname) - 1] = '\0';
+            strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
+            _devices[idx].band[sizeof(_devices[idx].band) - 1] = '\0';
+            _devices[idx].rssi = rssi;
+            _devices[idx].online = online;
+            _devices[idx].blocked = false;
+
+            Preferences pPrefs;
+            bool hasSavedPref = false;
+            if (pPrefs.begin("dev_parental", true)) {
+                if (pPrefs.isKey("macs")) {
+                    hasSavedPref = true;
+                    String pList = pPrefs.getString("macs", "");
+                    _devices[idx].parentalControl = (pList.indexOf(mac) >= 0);
+                }
+                pPrefs.end();
+            }
+            if (!hasSavedPref) {
+                _devices[idx].parentalControl = (strcasecmp(band.c_str(), "Guest") == 0);
+            }
+
+            _devices[idx].dlBytes = dl;
+            _devices[idx].ulBytes = ul;
+            _devices[idx].hourlyUsageBytes = (dl + ul);
+            _devices[idx].dailyUsageBytes = (dl + ul);
+            _devices[idx].usageHourKey = 0;
+            _devices[idx].usageDayKey = 0;
+            _devices[idx].hourlyLimitHitCount = 0;
+            _devices[idx].lastSeen = nowSec;
+            _devices[idx].netbiosTries = 0;
+            _rollUsageWindows(_devices[idx]);
+        }
     }
     if (_mutex) xSemaphoreGive(_mutex);
+
+    if (needsPrefSave) {
+        _saveParentalMacs();
+        _saveBlockedMacs();
+    }
 }
 
 void DeviceManager::_archiveDayToHistory(const ClientDevice& device, uint32_t completedEpochDay) {
@@ -749,6 +944,7 @@ String DeviceManager::getDevicesJson() const {
         d["blocked"]      = _devices[i].blocked;
         d["isBlocked"]    = _devices[i].blocked;
         d["parentalControl"] = _devices[i].parentalControl;
+        d["isRandomized"] = isRandomizedMac(_devices[i].mac);
         d["waiver"]       = scheduler.hasActiveWaiver(_devices[i].mac);
         d["waiverSecRemaining"] = scheduler.getWaiverRemainingSecs(_devices[i].mac);
         d["rxBytes"]      = _devices[i].dlBytes;
@@ -769,6 +965,7 @@ String DeviceManager::getDevicesJson() const {
         JsonObject u = usageArr.add<JsonObject>();
         u["mac"]              = _devices[i].mac;
         u["hostname"]         = _devices[i].hostname;
+        u["isRandomized"]     = isRandomizedMac(_devices[i].mac);
         u["hourlyUsageBytes"] = _devices[i].hourlyUsageBytes;
         u["dailyUsageBytes"]  = _devices[i].dailyUsageBytes;
         u["hitCount"]         = _devices[i].hourlyLimitHitCount;
