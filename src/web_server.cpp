@@ -315,11 +315,15 @@ void WebServer::_setupApiRoutes() {
 
     _server.on("/api/device/request-waiver", HTTP_POST,
         [this](AsyncWebServerRequest* req) {
-            _handleRequestWaiver(req, nullptr, 0);
+            if (req->contentLength() == 0) {
+                _handleRequestWaiver(req, nullptr, 0);
+            }
         },
         NULL,
-        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
-            _handleRequestWaiver(req, data, len);
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+            if (index + len == total) {
+                _handleRequestWaiver(req, data, len);
+            }
         });
 
     // ── Gateway & Router Parity Endpoints ────────────────────────
@@ -673,15 +677,22 @@ void WebServer::_handleDeviceWaiver(AsyncWebServerRequest* request, uint8_t* dat
 
         if (secs == 0) {
             scheduler.revokeWaiver(mac);
+            deviceManager.invalidateRestrictionCache();
             request->send(200, "application/json",
                           "{\"status\":\"waiver_revoked\",\"mac\":\"" + mac + "\"}");
             return;
         }
 
-        scheduler.grantWaiver(mac, secs);
-        request->send(200, "application/json",
-                      "{\"status\":\"waiver_granted\",\"mac\":\"" + mac +
-                      "\",\"durationSecs\":" + String(secs) + "}");
+        bool ok = scheduler.grantWaiver(mac, secs, true);
+        if (ok) {
+            deviceManager.invalidateRestrictionCache();
+            request->send(200, "application/json",
+                          "{\"status\":\"waiver_granted\",\"mac\":\"" + mac +
+                          "\",\"durationSecs\":" + String(secs) + "}");
+        } else {
+            request->send(400, "application/json",
+                          "{\"status\":\"error\",\"message\":\"Unable to grant waiver\"}");
+        }
         return;
     }
     request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -740,7 +751,6 @@ void WebServer::_handleCurfewGet(AsyncWebServerRequest* request) {
     doc["guestRxBytes"] = guestRxBytes;
     doc["guestTxBytes"] = guestTxBytes;
     doc["maxWaiversPerDay"] = scheduler.getMaxWaiversPerDay();
-    doc["hasParentalPin"]   = scheduler.hasParentalPin();
 
     String out;
     serializeJson(doc, out);
@@ -760,9 +770,6 @@ void WebServer::_handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, 
 
         if (doc["maxWaiversPerDay"].is<uint8_t>()) {
             scheduler.setMaxWaiversPerDay(doc["maxWaiversPerDay"].as<uint8_t>());
-        }
-        if (doc["parentalPin"].is<const char*>()) {
-            scheduler.setParentalPin(doc["parentalPin"].as<String>());
         }
 
         bool routerSynced = true;
@@ -859,7 +866,6 @@ void WebServer::_handleQuotaNotice(AsyncWebServerRequest* request) {
     scheduler.getQuotas(&quotas);
     uint8_t waiversUsedToday = (mac.length() > 0) ? scheduler.getWaiverCountToday(mac) : 0;
     uint8_t maxWaiversPerDay = scheduler.getMaxWaiversPerDay();
-    bool pinConfigured = scheduler.hasParentalPin();
 
     String html = buildQuotaNoticeHtml(
         clientIp,
@@ -870,8 +876,7 @@ void WebServer::_handleQuotaNotice(AsyncWebServerRequest* request) {
         quotas.dailyEnabled ? quotas.dailyLimitBytes : 0,
         waiverRemaining,
         waiversUsedToday,
-        maxWaiversPerDay,
-        pinConfigured
+        maxWaiversPerDay
     );
 
     AsyncWebServerResponse* resp = request->beginResponse(200, "text/html; charset=utf-8", html);
@@ -885,7 +890,6 @@ void WebServer::_handleRequestWaiver(AsyncWebServerRequest* request, uint8_t* da
     String clientIp = request->client() ? request->client()->remoteIP().toString() : "";
     String mac = "";
     String hostname = "";
-    String pin = "";
     uint64_t dailyBytes = 0;
     uint32_t secs = 1800; // default 30 mins
 
@@ -895,8 +899,6 @@ void WebServer::_handleRequestWaiver(AsyncWebServerRequest* request, uint8_t* da
             const char* m = doc["mac"] | "";
             if (strlen(m) > 0) mac = String(m);
 
-            const char* p = doc["pin"] | "";
-            if (strlen(p) > 0) pin = String(p);
             if (doc["durationSecs"].is<uint32_t>()) {
                 secs = doc["durationSecs"].as<uint32_t>();
             } else if (doc["minutes"].is<uint32_t>() || doc["minutes"].is<int>()) {
@@ -918,29 +920,15 @@ void WebServer::_handleRequestWaiver(AsyncWebServerRequest* request, uint8_t* da
         return;
     }
 
-    bool isAdminOverride = false;
-    if (pin.length() > 0) {
-        if (scheduler.hasParentalPin()) {
-            if (scheduler.verifyParentalPin(pin)) {
-                isAdminOverride = true;
-            } else {
-                request->send(403, "application/json", "{\"status\":\"error\",\"message\":\"Invalid Parent PIN\"}");
-                return;
-            }
-        } else {
-            isAdminOverride = true;
-        }
-    } else {
-        uint8_t used = scheduler.getWaiverCountToday(mac);
-        uint8_t maxW = scheduler.getMaxWaiversPerDay();
-        if (used >= maxW) {
-            request->send(403, "application/json",
-                          "{\"status\":\"error\",\"message\":\"Daily extension limit reached. Parent PIN required.\"}");
-            return;
-        }
+    uint8_t used = scheduler.getWaiverCountToday(mac);
+    uint8_t maxW = scheduler.getMaxWaiversPerDay();
+    if (used >= maxW) {
+        request->send(403, "application/json",
+                      "{\"status\":\"error\",\"message\":\"Daily extension limit reached for this device.\"}");
+        return;
     }
 
-    bool ok = scheduler.grantWaiver(mac, secs, isAdminOverride);
+    bool ok = scheduler.grantWaiver(mac, secs, false);
     if (!ok) {
         request->send(403, "application/json",
                       "{\"status\":\"error\",\"message\":\"Daily extension limit reached.\"}");
@@ -948,8 +936,8 @@ void WebServer::_handleRequestWaiver(AsyncWebServerRequest* request, uint8_t* da
     }
 
     deviceManager.invalidateRestrictionCache();
-    Serial.printf("[Waiver] Emergency waiver granted: %s (%s) for %u secs (admin override: %d)\n",
-                  mac.c_str(), clientIp.c_str(), secs, isAdminOverride);
+    Serial.printf("[Waiver] Emergency waiver granted: %s (%s) for %u secs\n",
+                  mac.c_str(), clientIp.c_str(), secs);
 
     JsonDocument resp;
     resp["status"] = "ok";

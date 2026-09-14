@@ -52,12 +52,12 @@ inline ClientRestrictionReason evaluateClientRestrictionDetail(const ClientRestr
         return RESTRICTION_CURFEW;
     }
 
-    // 5. Bandwidth quota limits (hourly throttle and daily cap)
-    if (in.hourlyQuotaEnabled && in.hourlyUsageBytes >= in.hourlyLimitBytes) {
-        return RESTRICTION_QUOTA_HOURLY;
-    }
-    if (in.dailyQuotaEnabled && in.dailyUsageBytes >= in.dailyLimitBytes) {
+    // 5. Bandwidth quota limits (daily cap takes precedence over hourly throttle)
+    if (in.dailyQuotaEnabled && in.dailyLimitBytes > 0 && in.dailyUsageBytes >= in.dailyLimitBytes) {
         return RESTRICTION_QUOTA_DAILY;
+    }
+    if (in.hourlyQuotaEnabled && in.hourlyLimitBytes > 0 && in.hourlyUsageBytes >= in.hourlyLimitBytes) {
+        return RESTRICTION_QUOTA_HOURLY;
     }
 
     return RESTRICTION_NONE;

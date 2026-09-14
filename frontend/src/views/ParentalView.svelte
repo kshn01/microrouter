@@ -58,10 +58,7 @@
   let waivedDevices = $state([])
 
   let protectedDevices = $derived(
-    allDevices.filter((d) => {
-      const isGuest = d.band && d.band.toLowerCase() === 'guest'
-      return isGuest || d.parentalControl
-    })
+    allDevices.filter((d) => Boolean(d.parentalControl))
   )
 
   let devicesOverLimitCount = $derived(
@@ -722,8 +719,8 @@
 
             {#if protectedDevices.length === 0}
               <div class="p-4 rounded-xl bg-white/[0.02] border border-white/5 text-center text-slate-400 text-xs py-5">
-                <p>No devices currently connected to Guest Wi-Fi or enrolled in Parental Controls.</p>
-                <p class="text-[11px] text-slate-500 mt-1">Connect clients to the Guest network or tag them in Device Inventory.</p>
+                <p>No devices are currently enrolled in Parental Controls or Quota Limits.</p>
+                <p class="text-[11px] text-slate-500 mt-1">Enroll devices in the <a href="#/devices" class="text-indigo-400 underline">Device Inventory</a> to manage curfews and data allowances.</p>
               </div>
             {:else}
               <div class="space-y-2.5 max-h-52 overflow-y-auto pr-1">
@@ -774,6 +771,10 @@
                         {:else if isNear}
                           <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-400">
                             Near Limit
+                          </span>
+                        {:else if limits.curfewActive}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-medium text-indigo-300 bg-indigo-500/10 border border-indigo-500/20">
+                            Curfew Active
                           </span>
                         {:else}
                           <span class="px-2 py-0.5 rounded-full text-[10px] font-mono text-slate-400 bg-white/5 border border-white/5">

@@ -205,17 +205,101 @@ void test_dns_captive_probe_domains() {
     TEST_ASSERT_FALSE(isCaptiveProbeDomain(nullptr));
 }
 
-void test_waiver_limit_and_pin_policy() {
-    TEST_ASSERT_TRUE(canGrantWaiverWithoutPin(0, 2));
-    TEST_ASSERT_TRUE(canGrantWaiverWithoutPin(1, 2));
-    TEST_ASSERT_FALSE(canGrantWaiverWithoutPin(2, 2));
-    TEST_ASSERT_FALSE(canGrantWaiverWithoutPin(3, 2));
+void test_waiver_daily_limit_policy() {
+    TEST_ASSERT_TRUE(canGrantWaiver(0, 2));
+    TEST_ASSERT_TRUE(canGrantWaiver(1, 2));
+    TEST_ASSERT_FALSE(canGrantWaiver(2, 2));
+    TEST_ASSERT_FALSE(canGrantWaiver(3, 2));
+    TEST_ASSERT_FALSE(canGrantWaiver(0, 0));
+}
 
-    TEST_ASSERT_TRUE(verifyWaiverPin("1234", "1234"));
-    TEST_ASSERT_FALSE(verifyWaiverPin("0000", "1234"));
-    TEST_ASSERT_FALSE(verifyWaiverPin(nullptr, "1234"));
-    TEST_ASSERT_FALSE(verifyWaiverPin("1234", nullptr));
-    TEST_ASSERT_FALSE(verifyWaiverPin("1234", ""));
+void test_schedule_start_minute_is_inclusive() {
+    // Exact minute curfew starts must be active
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, 22 * 60, 22 * 60, 6 * 60));
+    // 1 minute before start must NOT be active
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, 22 * 60 - 1, 22 * 60, 6 * 60));
+}
+
+void test_schedule_equal_start_and_end_is_inactive() {
+    // Equal start and end time defines a 0-length window (must be inactive)
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, 22 * 60, 22 * 60, 22 * 60));
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, 10 * 60, 22 * 60, 22 * 60));
+}
+
+void test_schedule_same_day_window_boundaries() {
+    // Curfew 14:00 (840) to 18:00 (1080)
+    int start = 14 * 60;
+    int end = 18 * 60;
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, start - 1, start, end)); // 13:59 -> inactive
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, start, start, end));      // 14:00 -> active
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, start + 30, start, end)); // 14:30 -> active
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, end - 1, start, end));    // 17:59 -> active
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, end, start, end));        // 18:00 -> inactive
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, end + 1, start, end));    // 18:01 -> inactive
+}
+
+void test_schedule_overnight_window_boundaries() {
+    // Curfew 23:30 (1410) to 06:15 (375) across midnight
+    int start = 23 * 60 + 30; // 1410
+    int end = 6 * 60 + 15;    // 375
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, start - 1, start, end)); // 23:29 -> inactive
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, start, start, end));      // 23:30 -> active
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, 1439, start, end));       // 23:59 -> active
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, 0, start, end));          // 00:00 -> active
+    TEST_ASSERT_TRUE(isScheduleActive(true, true, end - 1, start, end));    // 06:14 -> active
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, end, start, end));        // 06:15 -> inactive
+    TEST_ASSERT_FALSE(isScheduleActive(true, true, end + 1, start, end));    // 06:16 -> inactive
+}
+
+void test_quota_boundary_exact_and_offsets() {
+    ClientRestrictionInput input = {};
+    input.isParentalTarget = true;
+    input.dailyQuotaEnabled = true;
+    input.dailyLimitBytes = 1000;
+
+    // 1 byte below limit -> allowed
+    input.dailyUsageBytes = 999;
+    TEST_ASSERT_FALSE(evaluateClientRestriction(input));
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_NONE, evaluateClientRestrictionDetail(input));
+
+    // Exact match -> restricted
+    input.dailyUsageBytes = 1000;
+    TEST_ASSERT_TRUE(evaluateClientRestriction(input));
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_QUOTA_DAILY, evaluateClientRestrictionDetail(input));
+
+    // 1 byte above limit -> restricted
+    input.dailyUsageBytes = 1001;
+    TEST_ASSERT_TRUE(evaluateClientRestriction(input));
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_QUOTA_DAILY, evaluateClientRestrictionDetail(input));
+}
+
+void test_quota_zero_limit_is_safely_ignored() {
+    ClientRestrictionInput input = {};
+    input.isParentalTarget = true;
+    input.dailyQuotaEnabled = true;
+    input.dailyLimitBytes = 0; // Unconfigured / unlimited
+    input.dailyUsageBytes = 0;
+    TEST_ASSERT_FALSE(evaluateClientRestriction(input));
+
+    input.hourlyQuotaEnabled = true;
+    input.hourlyLimitBytes = 0; // Unconfigured
+    input.hourlyUsageBytes = 0;
+    TEST_ASSERT_FALSE(evaluateClientRestriction(input));
+}
+
+void test_quota_priority_daily_cap_precedes_hourly() {
+    ClientRestrictionInput input = {};
+    input.isParentalTarget = true;
+    input.dailyQuotaEnabled = true;
+    input.dailyLimitBytes = 1000;
+    input.dailyUsageBytes = 2000; // Daily exceeded
+
+    input.hourlyQuotaEnabled = true;
+    input.hourlyLimitBytes = 200;
+    input.hourlyUsageBytes = 300; // Hourly exceeded
+
+    // When both are exceeded, DAILY must take precedence so client knows they hit daily allowance
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_QUOTA_DAILY, evaluateClientRestrictionDetail(input));
 }
 
 void test_is_randomized_mac() {
@@ -310,7 +394,14 @@ int main() {
     RUN_TEST(test_restriction_policy_quota_exceeded_restricts_device);
     RUN_TEST(test_restriction_policy_detail_reasons);
     RUN_TEST(test_dns_captive_probe_domains);
-    RUN_TEST(test_waiver_limit_and_pin_policy);
+    RUN_TEST(test_waiver_daily_limit_policy);
+    RUN_TEST(test_schedule_start_minute_is_inclusive);
+    RUN_TEST(test_schedule_equal_start_and_end_is_inactive);
+    RUN_TEST(test_schedule_same_day_window_boundaries);
+    RUN_TEST(test_schedule_overnight_window_boundaries);
+    RUN_TEST(test_quota_boundary_exact_and_offsets);
+    RUN_TEST(test_quota_zero_limit_is_safely_ignored);
+    RUN_TEST(test_quota_priority_daily_cap_precedes_hourly);
     RUN_TEST(test_rate_limiter_burst_and_replenish);
     RUN_TEST(test_rate_limiter_isolates_ips);
     RUN_TEST(test_is_randomized_mac);

@@ -131,7 +131,7 @@ bool Scheduler::grantWaiver(const String& mac, uint32_t durationSecs, bool isAdm
                 _waivers[i].lastGrantEpochDay = currentDay;
             }
 
-            if (!isAdminOverride && !canGrantWaiverWithoutPin(_waivers[i].waiverCountToday, _maxWaiversPerDay)) {
+            if (!isAdminOverride && !canGrantWaiver(_waivers[i].waiverCountToday, _maxWaiversPerDay)) {
                 Serial.printf("[Scheduler] Waiver denied for %s: daily cap (%u/%u) reached\n",
                               mac.c_str(), _waivers[i].waiverCountToday, _maxWaiversPerDay);
                 return false;
@@ -256,20 +256,6 @@ void Scheduler::setMaxWaiversPerDay(uint8_t maxWaivers) {
     _saveWaivers();
 }
 
-bool Scheduler::hasParentalPin() const {
-    return strlen(_parentalPin) > 0;
-}
-
-bool Scheduler::verifyParentalPin(const String& pin) const {
-    return verifyWaiverPin(pin.c_str(), _parentalPin);
-}
-
-void Scheduler::setParentalPin(const String& pin) {
-    strncpy(_parentalPin, pin.c_str(), sizeof(_parentalPin) - 1);
-    _parentalPin[sizeof(_parentalPin) - 1] = '\0';
-    _saveWaivers();
-}
-
 void Scheduler::_checkExpirations() {
     time_t now = time(nullptr);
     bool changed = false;
@@ -290,7 +276,6 @@ void Scheduler::_saveWaivers() {
     prefs.begin("microrouter", false);
     prefs.putBytes("waivers", _waivers, sizeof(_waivers));
     prefs.putUChar("w_max_day", _maxWaiversPerDay);
-    prefs.putString("p_pin", _parentalPin);
     prefs.end();
 }
 
@@ -304,9 +289,6 @@ void Scheduler::_loadWaivers() {
         memset(_waivers, 0, sizeof(_waivers));
     }
     _maxWaiversPerDay = prefs.getUChar("w_max_day", 2);
-    String pin = prefs.getString("p_pin", "");
-    strncpy(_parentalPin, pin.c_str(), sizeof(_parentalPin) - 1);
-    _parentalPin[sizeof(_parentalPin) - 1] = '\0';
     prefs.end();
 }
 
@@ -314,7 +296,6 @@ String Scheduler::getWaiversJson() const {
     JsonDocument doc;
     JsonArray arr = doc["waivers"].to<JsonArray>();
     doc["maxPerDay"] = _maxWaiversPerDay;
-    doc["hasPin"] = hasParentalPin();
     time_t now = time(nullptr);
 
     for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {

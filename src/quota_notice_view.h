@@ -50,8 +50,7 @@ inline String buildQuotaNoticeHtml(const String& ip,
                                    uint64_t dailyLimit,
                                    uint32_t waiverRemainingSecs,
                                    uint8_t waiversUsedToday = 0,
-                                   uint8_t maxWaiversPerDay = 2,
-                                   bool pinConfigured = false) {
+                                   uint8_t maxWaiversPerDay = 2) {
     const char* badgeText = "Notice";
     const char* badgeColor = "#F59E0B";
     const char* badgeBg = "rgba(245, 158, 11, 0.15)";
@@ -218,20 +217,6 @@ h1 { font-size: 21px; font-weight: 700; color: #FFFFFF; line-height: 1.3; margin
   font-size: 13px;
   padding: 11px 16px;
 }
-.pin-input {
-  width: 100%;
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  color: #FFFFFF;
-  font-size: 15px;
-  text-align: center;
-  letter-spacing: 4px;
-  margin-bottom: 10px;
-  outline: none;
-}
-.pin-input:focus { border-color: #6366F1; }
 .countdown-box {
   background: rgba(16, 185, 129, 0.12);
   border: 1px solid rgba(16, 185, 129, 0.3);
@@ -297,17 +282,8 @@ h1 { font-size: 21px; font-weight: 700; color: #FFFFFF; line-height: 1.3; margin
         if (!dailyCapReached) {
             html += "  <button class=\"btn btn-primary\" id=\"waiverBtn\" onclick=\"requestExtension()\">Request 30-Minute Extension (" + String(waiversLeft) + " left today)</button>\n";
             html += "  <a class=\"btn btn-sec\" id=\"resumeBtn\" style=\"display:none;\" href=\"/hotspot-detect.html\">Resume Browsing</a>\n";
-            html += "  <div id=\"pinSection\" style=\"display:none; margin-top:14px;\">\n";
-            html += "    <input type=\"password\" id=\"pinInput\" class=\"pin-input\" placeholder=\"Parent PIN\" maxlength=\"8\" autocomplete=\"off\">\n";
-            html += "    <button class=\"btn btn-primary\" onclick=\"requestExtensionWithPin()\">Unlock with PIN</button>\n";
-            html += "  </div>\n";
-            html += "  <span class=\"sub-link\" id=\"pinToggle\" onclick=\"togglePin()\">Parent Override PIN</span>\n";
         } else {
-            html += "  <div style=\"font-size:12.5px; color:#EF4444; margin-bottom:12px;\">Daily extension limit reached (" + String(maxWaiversPerDay) + "/" + String(maxWaiversPerDay) + " used).</div>\n";
-            html += "  <div id=\"pinSection\">\n";
-            html += "    <input type=\"password\" id=\"pinInput\" class=\"pin-input\" placeholder=\"Parent PIN\" maxlength=\"8\" autocomplete=\"off\">\n";
-            html += "    <button class=\"btn btn-primary\" id=\"waiverBtn\" onclick=\"requestExtensionWithPin()\">Unlock with Parent PIN</button>\n";
-            html += "  </div>\n";
+            html += "  <div style=\"font-size:12.5px; color:#EF4444; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); border-radius:12px; padding:12px; margin-bottom:8px;\">Daily extension limit reached (" + String(maxWaiversPerDay) + "/" + String(maxWaiversPerDay) + " used). Please contact your network administrator.</div>\n";
             html += "  <a class=\"btn btn-sec\" id=\"resumeBtn\" style=\"display:none;\" href=\"/hotspot-detect.html\">Resume Browsing</a>\n";
         }
     } else {
@@ -324,28 +300,14 @@ var initialRemaining = )raw";
     html += R"raw(;
 var timerInterval = null;
 
-function togglePin() {
-  var sec = document.getElementById('pinSection');
-  var tog = document.getElementById('pinToggle');
-  if (sec) {
-    var show = (sec.style.display === 'none' || sec.style.display === '');
-    sec.style.display = show ? 'block' : 'none';
-    if (tog) tog.innerText = show ? 'Cancel' : 'Parent Override PIN';
-  }
-}
-
 function startTimer(seconds) {
   var rem = seconds;
   var box = document.getElementById('countdownBox');
   var disp = document.getElementById('countdownTimer');
   var btn = document.getElementById('waiverBtn');
-  var pinSec = document.getElementById('pinSection');
-  var pinTog = document.getElementById('pinToggle');
   var resume = document.getElementById('resumeBtn');
   if (box) box.style.display = 'block';
   if (btn) btn.style.display = 'none';
-  if (pinSec) pinSec.style.display = 'none';
-  if (pinTog) pinTog.style.display = 'none';
   if (resume) resume.style.display = 'block';
   document.getElementById('statusBadge').innerText = 'Waiver Active';
   document.getElementById('statusBadge').style.color = '#10B981';
@@ -368,19 +330,17 @@ function startTimer(seconds) {
 
 if (initialRemaining > 0) { startTimer(initialRemaining); }
 
-function requestExtension(pin) {
+function requestExtension() {
   var btn = document.getElementById('waiverBtn');
   if (btn) {
     btn.disabled = true;
     btn.innerText = 'Unlocking Access...';
   }
-  var payload = {};
-  if (pin) payload.pin = pin;
 
   fetch('/api/device/request-waiver', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({})
   })
   .then(function(r) { return r.json(); })
   .then(function(data) {
@@ -389,7 +349,7 @@ function requestExtension(pin) {
     } else {
       if (btn) {
         btn.disabled = false;
-        btn.innerText = pin ? 'Unlock with Parent PIN' : 'Request 30-Minute Extension';
+        btn.innerText = 'Request 30-Minute Extension';
       }
       alert(data.message || 'Unable to grant extension');
     }
@@ -397,19 +357,10 @@ function requestExtension(pin) {
   .catch(function(err) {
     if (btn) {
       btn.disabled = false;
-      btn.innerText = pin ? 'Unlock with Parent PIN' : 'Request 30-Minute Extension';
+      btn.innerText = 'Request 30-Minute Extension';
     }
     alert('Network error requesting extension: ' + err);
   });
-}
-
-function requestExtensionWithPin() {
-  var pin = document.getElementById('pinInput') ? document.getElementById('pinInput').value : '';
-  if (!pin) {
-    alert('Please enter Parent PIN');
-    return;
-  }
-  requestExtension(pin);
 }
 </script>
 </body>

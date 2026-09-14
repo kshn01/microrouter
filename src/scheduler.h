@@ -56,9 +56,6 @@ public:
     uint8_t getWaiverCountToday(const String& mac) const;
     uint8_t getMaxWaiversPerDay() const;
     void setMaxWaiversPerDay(uint8_t maxWaivers);
-    bool hasParentalPin() const;
-    bool verifyParentalPin(const String& pin) const;
-    void setParentalPin(const String& pin);
     String getWaiversJson() const;
 
     // Curfew Schedules
@@ -80,7 +77,6 @@ private:
     QuotaLimits    _quotas{false, 500 * 1024 * 1024ULL, false, 2 * 1024 * 1024 * 1024ULL, false, 3600};
     TempWaiver     _waivers[MAX_TEMP_WAIVERS];
     uint8_t        _maxWaiversPerDay = 2;
-    char           _parentalPin[16] = "";
     unsigned long  _lastNtpCheck = 0;
     unsigned long  _lastLoopCheck = 0;
     bool           _ntpSynced = false;

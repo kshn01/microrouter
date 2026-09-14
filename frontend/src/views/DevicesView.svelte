@@ -317,7 +317,7 @@
     <StatCard
       title="Access Blocked"
       value={String(blockedCount)}
-      subtitle="Restricted by curfew or policy"
+      subtitle="Administrative blocks"
       color="rose"
       icon={Ban}
     />
@@ -496,13 +496,13 @@
           <div class="flex items-center justify-between text-xs px-1">
             <span class="text-slate-400 text-[11px] flex items-center gap-1.5">
               <Moon class="w-3.5 h-3.5 text-indigo-400" />
-              Curfew & Quota Lock:
+              Parental Controls:
             </span>
             <button
               onclick={() => toggleParentalControl(dev)}
               class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all {dev.parentalControl ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'}"
             >
-              {dev.parentalControl ? 'Enrolled (Protected)' : 'Off (Unrestricted)'}
+              {dev.parentalControl ? 'Enrolled' : 'Off (Unrestricted)'}
             </button>
           </div>
 

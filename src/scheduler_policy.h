@@ -14,12 +14,6 @@ inline bool isScheduleActive(bool enabled, bool timeSynced,
     return currentMinute >= startMinute || currentMinute < endMinute;
 }
 
-inline bool canGrantWaiverWithoutPin(uint8_t waiversGrantedToday, uint8_t maxWaiversPerDay) {
+inline bool canGrantWaiver(uint8_t waiversGrantedToday, uint8_t maxWaiversPerDay) {
     return waiversGrantedToday < maxWaiversPerDay;
-}
-
-inline bool verifyWaiverPin(const char* inputPin, const char* configuredPin) {
-    if (!configuredPin || configuredPin[0] == '\0') return false;
-    if (!inputPin) return false;
-    return strcmp(inputPin, configuredPin) == 0;
 }
