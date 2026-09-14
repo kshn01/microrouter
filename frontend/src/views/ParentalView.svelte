@@ -12,7 +12,13 @@
     RefreshCw,
     HardDrive,
     Ban,
-    UserCheck
+    UserCheck,
+    Activity,
+    Smartphone,
+    Laptop,
+    Wifi,
+    Plus,
+    ExternalLink
   } from '@lucide/svelte'
   import Card from '../components/ui/Card.svelte'
   import StatCard from '../components/ui/StatCard.svelte'
@@ -48,15 +54,26 @@
     guestRxBytes: 0,
   })
 
+  let allDevices = $state([])
   let waivedDevices = $state([])
+
+  let protectedDevices = $derived(
+    allDevices.filter((d) => {
+      const isGuest = d.band && d.band.toLowerCase() === 'guest'
+      return isGuest || d.parentalControl
+    })
+  )
+
+  let devicesOverLimitCount = $derived(
+    protectedDevices.filter((d) => {
+      if (!limits.dailyQuotaMB || limits.dailyQuotaMB <= 0) return false
+      const usageMb = (d.dailyUsage || 0) / (1024 * 1024)
+      return usageMb >= limits.dailyQuotaMB
+    }).length
+  )
 
   let dailyUsageMB = $derived(
     Math.round(((limits.guestRxBytes + limits.guestTxBytes) / (1024 * 1024)) * 10) / 10
-  )
-  let dailyUsagePercent = $derived(
-    limits.dailyQuotaMB > 0
-      ? Math.min(100, Math.round((dailyUsageMB / limits.dailyQuotaMB) * 100))
-      : 0
   )
 
   function format12Hour(hour, min) {
@@ -201,6 +218,7 @@
         }
       }
       if (devRes && devRes.devices) {
+        allDevices = devRes.devices
         waivedDevices = devRes.devices.filter(
           (d) => (d.waiverSecRemaining || 0) > 0
         )
@@ -258,8 +276,19 @@
       await apiSetDeviceWaiver(mac, 0)
       waivedDevices = waivedDevices.filter((d) => d.mac !== mac)
       showToast(`Waiver revoked for ${mac}`, 'info')
+      await loadData()
     } catch (err) {
       showToast('Error revoking waiver: ' + err.message, 'error')
+    }
+  }
+
+  async function grantQuickWaiver(mac, durationSecs = 1800) {
+    try {
+      await apiSetDeviceWaiver(mac, durationSecs)
+      showToast(`Temporary waiver granted for ${mac}`, 'success')
+      await loadData()
+    } catch (err) {
+      showToast('Failed to grant waiver: ' + err.message, 'error')
     }
   }
 
@@ -356,18 +385,18 @@
       icon={Moon}
     />
     <StatCard
-      title="Daily Quota Cap"
-      value="{limits.dailyQuotaMB} MB"
-      subtitle="{dailyUsageMB} MB consumed today ({dailyUsagePercent}%)"
+      title="Daily Quota / Device"
+      value={limits.dailyQuotaMB > 0 ? formatMbHuman(limits.dailyQuotaMB) : 'Uncapped'}
+      subtitle="{protectedDevices.length} protected clients enrolled"
       color="indigo"
       icon={HardDrive}
     />
     <StatCard
-      title="Hourly Quota Cap"
-      value="{limits.hourlyQuotaMB} MB"
-      subtitle="Per-station hourly throttle limit"
-      color="cyan"
-      icon={Sliders}
+      title="Guest Fleet Usage"
+      value="{dailyUsageMB} MB"
+      subtitle={devicesOverLimitCount > 0 ? `${devicesOverLimitCount} client(s) over quota` : 'Total combined traffic today'}
+      color={devicesOverLimitCount > 0 ? 'rose' : 'cyan'}
+      icon={Activity}
     />
     <StatCard
       title="Active Waivers"
@@ -634,21 +663,22 @@
     <!-- Bandwidth Quota Configuration -->
     <Card class="h-full flex flex-col justify-between">
       <div class="flex-1 flex flex-col">
+        <!-- Card Header with Badges -->
         <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
               <HardDrive class="w-5 h-5" />
             </div>
             <div>
-              <h2 class="text-base font-bold text-white tracking-tight">Bandwidth Quotas</h2>
-              <p class="text-[11px] text-slate-400">Daily and hourly data thresholds for protected clients</p>
+              <h2 class="text-base font-bold text-white tracking-tight">Per-Device Bandwidth Quotas</h2>
+              <p class="text-[11px] text-slate-400">Independent daily data caps and hourly throttles per protected client</p>
             </div>
           </div>
 
           <div class="flex items-center gap-2">
             {#if limits.dailyQuotaMB > 0}
               <span class="px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-[11px] font-semibold">
-                {formatMbHuman(limits.dailyQuotaMB)} / day
+                {formatMbHuman(limits.dailyQuotaMB)} / device
               </span>
             {:else}
               <span class="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono text-[11px] font-semibold">
@@ -659,38 +689,127 @@
         </div>
 
         <div class="flex flex-col gap-4 text-xs">
-          <!-- Daily Consumption Progress -->
-          <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-2.5">
-            <div class="flex items-center justify-between text-[11px]">
-              <div class="flex items-center gap-1.5 text-slate-400">
-                <Sliders class="w-3.5 h-3.5 text-indigo-400" />
-                <span>Today's Guest Fleet Consumption</span>
-              </div>
-              <div class="font-mono text-white font-semibold">
-                {#if limits.dailyQuotaMB > 0}
-                  <span class="text-white font-bold">{dailyUsageMB} MB</span>
-                  <span class="text-slate-400 font-normal"> / {limits.dailyQuotaMB} MB</span>
-                  <span class="text-indigo-400 font-bold ml-1.5">({dailyUsagePercent}%)</span>
-                {:else}
-                  <span class="text-white font-bold">{dailyUsageMB} MB</span>
-                  <span class="text-emerald-400 ml-1.5 font-medium">(Uncapped)</span>
-                {/if}
-              </div>
+          <!-- Fleet Consumption Context Banner -->
+          <div class="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2">
+              <div class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>
+              <span class="text-slate-300 font-medium">Guest Fleet Combined Traffic:</span>
+              <span class="font-mono text-white font-bold">{dailyUsageMB} MB</span>
             </div>
-            <ProgressBar
-              percent={dailyUsagePercent}
-              color={dailyUsagePercent > 90 ? 'rose' : (dailyUsagePercent > 75 ? 'amber' : 'indigo')}
-            />
+            <span class="text-[11px] text-slate-500 font-mono hidden sm:inline">
+              Resets at 00:00 midnight
+            </span>
           </div>
 
-          <!-- Quota Controls Grid -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Live Protected Devices Allowance Monitor -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Sliders class="w-3.5 h-3.5 text-indigo-400" />
+                <span>Protected Clients Live Allowance</span>
+                <span class="ml-1 px-1.5 py-0.2 rounded bg-white/10 text-slate-300 text-[10px] font-mono">
+                  {protectedDevices.length}
+                </span>
+              </div>
+              <a
+                href="#/devices"
+                class="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors inline-flex items-center gap-1"
+              >
+                <span>Manage Devices</span>
+                <ExternalLink class="w-3 h-3" />
+              </a>
+            </div>
+
+            {#if protectedDevices.length === 0}
+              <div class="p-4 rounded-xl bg-white/[0.02] border border-white/5 text-center text-slate-400 text-xs py-5">
+                <p>No devices currently connected to Guest Wi-Fi or enrolled in Parental Controls.</p>
+                <p class="text-[11px] text-slate-500 mt-1">Connect clients to the Guest network or tag them in Device Inventory.</p>
+              </div>
+            {:else}
+              <div class="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+                {#each protectedDevices as d (d.mac)}
+                  {@const devUsageMb = Math.round(((d.dailyUsage || 0) / (1024 * 1024)) * 10) / 10}
+                  {@const devPct = limits.dailyQuotaMB > 0 ? Math.min(100, Math.round((devUsageMb / limits.dailyQuotaMB) * 100)) : 0}
+                  {@const isOver = limits.dailyQuotaMB > 0 && devUsageMb >= limits.dailyQuotaMB}
+                  {@const isNear = limits.dailyQuotaMB > 0 && devPct >= 80 && !isOver}
+                  {@const hasWaiver = (d.waiverSecRemaining || 0) > 0}
+
+                  <div class="p-3 rounded-xl bg-white/[0.03] border {isOver && !hasWaiver ? 'border-rose-500/30 bg-rose-500/[0.03]' : 'border-white/5'} flex flex-col gap-2">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <div class="w-6 h-6 rounded-lg {isOver && !hasWaiver ? 'bg-rose-500/10 text-rose-400' : 'bg-white/5 text-slate-400'} flex items-center justify-center shrink-0">
+                          {#if d.hostname && d.hostname.toLowerCase().includes('mac')}
+                            <Laptop class="w-3.5 h-3.5" />
+                          {:else}
+                            <Smartphone class="w-3.5 h-3.5" />
+                          {/if}
+                        </div>
+                        <div class="min-w-0">
+                          <div class="font-semibold text-white truncate max-w-[140px] sm:max-w-[180px] text-xs leading-tight">
+                            {d.hostname || 'Device ' + d.mac.slice(-5)}
+                          </div>
+                          <div class="text-[10px] text-slate-500 font-mono">
+                            {d.ip}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="flex items-center gap-2">
+                        {#if hasWaiver}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                            Waiver Active
+                          </span>
+                        {:else if isOver}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                            Quota Exceeded
+                          </span>
+                          <button
+                            type="button"
+                            onclick={() => grantQuickWaiver(d.mac, 1800)}
+                            class="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition-all"
+                            title="Grant temporary 30-minute waiver"
+                          >
+                            +30m
+                          </button>
+                        {:else if isNear}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                            Near Limit
+                          </span>
+                        {:else}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-mono text-slate-400 bg-white/5 border border-white/5">
+                            {d.band || 'Guest'}
+                          </span>
+                        {/if}
+
+                        <span class="font-mono text-xs font-semibold text-white shrink-0">
+                          {devUsageMb} MB
+                          {#if limits.dailyQuotaMB > 0}
+                            <span class="text-slate-400 font-normal text-[11px]">/ {limits.dailyQuotaMB} MB</span>
+                          {/if}
+                        </span>
+                      </div>
+                    </div>
+
+                    {#if limits.dailyQuotaMB > 0}
+                      <ProgressBar
+                        percent={devPct}
+                        color={hasWaiver ? 'emerald' : (isOver ? 'rose' : (isNear ? 'amber' : 'indigo'))}
+                      />
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          <!-- Quota Policy Limits Configuration Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
             <!-- Daily Limit Panel -->
             <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3 flex flex-col justify-between">
               <div>
                 <div class="flex items-center justify-between mb-2">
                   <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="daily-quota">
-                    <span>Daily Limit</span>
+                    <span>Daily Cap / Client</span>
                   </label>
                   <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
                     {formatMbHuman(limits.dailyQuotaMB)}
@@ -738,7 +857,7 @@
               <div>
                 <div class="flex items-center justify-between mb-2">
                   <label class="font-semibold text-slate-200 text-xs flex items-center gap-1.5" for="hourly-quota">
-                    <span>Hourly Limit</span>
+                    <span>Hourly Throttle</span>
                   </label>
                   <span class="text-[11px] font-mono text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
                     {formatMbHuman(limits.hourlyQuotaMB)}
@@ -793,7 +912,7 @@
               Unsaved quota changes
             </span>
           {:else}
-            <span class="text-slate-500">Bandwidth quotas synced</span>
+            <span class="text-slate-500">Per-device bandwidth quotas synced</span>
           {/if}
         </div>
 
