@@ -31,3 +31,15 @@ inline bool isEncryptedDnsEndpoint(const char* domain) {
            domainMatches(domain, "dns.adguard-dns.com") ||
            domainMatches(domain, "dns.nextdns.io");
 }
+
+inline bool isCaptiveProbeDomain(const char* domain) {
+    if (!domain) return false;
+    return domainMatches(domain, "captive.apple.com") ||
+           domainMatches(domain, "connectivitycheck.gstatic.com") ||
+           domainMatches(domain, "connectivitycheck.android.com") ||
+           domainMatches(domain, "clients3.google.com") ||
+           domainMatches(domain, "www.msftconnecttest.com") ||
+           domainMatches(domain, "msftconnecttest.com") ||
+           domainMatches(domain, "www.msftncsi.com") ||
+           domainMatches(domain, "detectportal.firefox.com");
+}

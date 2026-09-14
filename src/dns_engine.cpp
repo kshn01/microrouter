@@ -328,9 +328,48 @@ static void dnsProxyTask(void* pvParameters) {
         }
 
         // Apply per-client access policy before forwarding to the upstream resolver.
-        // Return RFC NXDOMAIN (RCODE=3, Name Error) across all query types (A, AAAA, HTTPS)
-        // so client OS stacks immediately fail-stop and do not attempt dual-stack fallbacks.
-        if (deviceManager.isClientRestricted(String(clientIpStr))) {
+        // If a restricted client queries an OS captive portal probe (e.g. captive.apple.com,
+        // connectivitycheck.gstatic.com), resolve to the ESP32 IP so iOS and Android trigger
+        // their native mobile system notification and slide up the Quota Alert Sheet!
+        ClientRestrictionReason restrictReason = deviceManager.getClientRestrictionReason(String(clientIpStr));
+        if (restrictReason != RESTRICTION_NONE) {
+            if (isCaptiveProbeDomain(qDomain) && qType == 1 && qClass == 1) {
+                uint32_t myIp = (uint32_t)WiFi.localIP();
+                if (!WiFi.isConnected() || myIp == 0) {
+                    myIp = (uint32_t)WiFi.softAPIP();
+                }
+
+                memcpy(s_txBuf, s_rxBuf, qEnd);
+                s_txBuf[2] = 0x81; // QR=1, RD=1
+                s_txBuf[3] = 0x80; // RA=1, RCODE=0 (NoError)
+                s_txBuf[6] = 0x00; s_txBuf[7] = 0x01; // ANCOUNT = 1
+                s_txBuf[8] = 0x00; s_txBuf[9] = 0x00;
+                s_txBuf[10] = 0x00; s_txBuf[11] = 0x00;
+
+                int p = qEnd;
+                s_txBuf[p++] = 0xC0; s_txBuf[p++] = 0x0C; // Compression pointer to question
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x01; // TYPE A
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x01; // CLASS IN
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x0A; // TTL 10s
+                s_txBuf[p++] = 0x00; s_txBuf[p++] = 0x04; // RDLENGTH 4
+                s_txBuf[p++] = (myIp >> 0) & 0xFF;
+                s_txBuf[p++] = (myIp >> 8) & 0xFF;
+                s_txBuf[p++] = (myIp >> 16) & 0xFF;
+                s_txBuf[p++] = (myIp >> 24) & 0xFF;
+
+                sendto(serverSock, s_txBuf, p, 0, (struct sockaddr*)&clientAddr, clientAddrLen);
+
+                if (s_dnsMutex) xSemaphoreTake(s_dnsMutex, portMAX_DELAY);
+                s_totalQueries++;
+                s_queriesAnswered++;
+                s_localInterceptCount++;
+                if (s_dnsMutex) xSemaphoreGive(s_dnsMutex);
+                logQuery(qDomain, clientIpStr, DNS_STATUS_LOCAL, 0, qType);
+                continue;
+            }
+
+            // Return RFC NXDOMAIN (RCODE=3, Name Error) across standard domains
+            // so client OS stacks immediately fail-stop.
             memcpy(s_txBuf, s_rxBuf, qEnd);
             s_txBuf[2] = 0x85; // QR=1, AA=1, RD=1
             s_txBuf[3] = 0x83; // RA=1, RCODE=3 (NXDOMAIN)

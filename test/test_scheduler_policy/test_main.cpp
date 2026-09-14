@@ -150,6 +150,59 @@ void test_rate_limiter_isolates_ips() {
     TEST_ASSERT_FALSE(limiter.allow(ip2, 1040));
 }
 
+void test_restriction_policy_detail_reasons() {
+    ClientRestrictionInput input = {};
+    input.isBlocked = true;
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_ADMIN_BLOCK, evaluateClientRestrictionDetail(input));
+
+    input.isBlocked = false;
+    input.hasActiveWaiver = true;
+    input.isParentalTarget = true;
+    input.isCurfewActive = true;
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_NONE, evaluateClientRestrictionDetail(input));
+
+    input.hasActiveWaiver = false;
+    input.isParentalTarget = false;
+    input.isCurfewActive = true;
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_NONE, evaluateClientRestrictionDetail(input));
+
+    input.isParentalTarget = true;
+    input.isCurfewActive = true;
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_CURFEW, evaluateClientRestrictionDetail(input));
+
+    input.isCurfewActive = false;
+    input.hourlyQuotaEnabled = true;
+    input.hourlyUsageBytes = 200;
+    input.hourlyLimitBytes = 100;
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_QUOTA_HOURLY, evaluateClientRestrictionDetail(input));
+
+    input.hourlyUsageBytes = 50;
+    input.dailyQuotaEnabled = true;
+    input.dailyUsageBytes = 500;
+    input.dailyLimitBytes = 250;
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_QUOTA_DAILY, evaluateClientRestrictionDetail(input));
+
+    input.dailyUsageBytes = 100;
+    TEST_ASSERT_EQUAL_UINT8(RESTRICTION_NONE, evaluateClientRestrictionDetail(input));
+}
+
+void test_dns_captive_probe_domains() {
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("captive.apple.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("connectivitycheck.gstatic.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("connectivitycheck.android.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("clients3.google.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("www.msftconnecttest.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("msftconnecttest.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("www.msftncsi.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("detectportal.firefox.com"));
+
+    TEST_ASSERT_FALSE(isCaptiveProbeDomain("google.com"));
+    TEST_ASSERT_FALSE(isCaptiveProbeDomain("apple.com"));
+    TEST_ASSERT_FALSE(isCaptiveProbeDomain("youtube.com"));
+    TEST_ASSERT_FALSE(isCaptiveProbeDomain("microsoft.com"));
+    TEST_ASSERT_FALSE(isCaptiveProbeDomain(nullptr));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_disabled_schedule_is_inactive);
@@ -165,6 +218,8 @@ int main() {
     RUN_TEST(test_restriction_policy_non_parental_never_curfewed_or_throttled);
     RUN_TEST(test_restriction_policy_curfew_restricts_parental_device);
     RUN_TEST(test_restriction_policy_quota_exceeded_restricts_device);
+    RUN_TEST(test_restriction_policy_detail_reasons);
+    RUN_TEST(test_dns_captive_probe_domains);
     RUN_TEST(test_rate_limiter_burst_and_replenish);
     RUN_TEST(test_rate_limiter_isolates_ips);
     return UNITY_END();

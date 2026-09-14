@@ -61,6 +61,9 @@ private:
     void _handleCurfewGet(AsyncWebServerRequest* request);
     void _handleCurfewSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
     void _handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, size_t len);
+    void _handleCaptiveProbe(AsyncWebServerRequest* request);
+    void _handleQuotaNotice(AsyncWebServerRequest* request);
+    void _handleRequestWaiver(AsyncWebServerRequest* request, uint8_t* data, size_t len);
 
     // ── Router Gateway & Analytics Handlers ──────────────────────
     void _handleRouterReboot(AsyncWebServerRequest* request);

@@ -419,11 +419,11 @@ bool DeviceManager::isParentalControl(const String& mac) const {
     return enabled;
 }
 
-bool DeviceManager::isClientRestricted(const String& ip) const {
-    if (ip.length() == 0) return false;
+ClientRestrictionReason DeviceManager::getClientRestrictionReason(const String& ip) const {
+    if (ip.length() == 0) return RESTRICTION_NONE;
 
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
-    bool anyRestricted = false;
+    ClientRestrictionReason reason = RESTRICTION_NONE;
     QuotaLimits quotas;
     scheduler.getQuotas(&quotas);
     bool isCurfew = scheduler.isCurfewActive();
@@ -448,14 +448,44 @@ bool DeviceManager::isClientRestricted(const String& ip) const {
                 .dailyLimitBytes     = quotas.dailyLimitBytes,
             };
 
-            if (evaluateClientRestriction(input)) {
-                anyRestricted = true;
+            ClientRestrictionReason r = evaluateClientRestrictionDetail(input);
+            if (r != RESTRICTION_NONE) {
+                reason = r;
                 break;
             }
         }
     }
     if (_mutex) xSemaphoreGive(_mutex);
-    return anyRestricted;
+    return reason;
+}
+
+bool DeviceManager::isClientRestricted(const String& ip) const {
+    return getClientRestrictionReason(ip) != RESTRICTION_NONE;
+}
+
+bool DeviceManager::getClientDetailsByIp(const String& ip, String& outMac, String& outHostname, uint64_t& outDailyBytes) {
+    if (ip.length() == 0) return false;
+    bool found = false;
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    int idx = _findDeviceIndexByIp(ip);
+    if (idx >= 0) {
+        outMac = _devices[idx].mac;
+        outHostname = _devices[idx].hostname;
+        outDailyBytes = _devices[idx].dailyUsageBytes;
+        found = true;
+    }
+    if (_mutex) xSemaphoreGive(_mutex);
+
+    if (!found) {
+        String arpMac = _resolveArpMac(ip.c_str());
+        if (arpMac.length() > 0) {
+            outMac = arpMac;
+            outHostname = "Client";
+            outDailyBytes = 0;
+            found = true;
+        }
+    }
+    return found;
 }
 
 void DeviceManager::_saveBlockedMacs() {

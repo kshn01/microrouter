@@ -4,6 +4,7 @@
 #include "device_manager.h"
 #include "router_client.h"
 #include "zte_client.h"
+#include "quota_notice_view.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -67,6 +68,16 @@ void WebServer::loop() {
 // ── Static Files ─────────────────────────────────────────────────
 
 void WebServer::_setupStaticFiles() {
+    // Intercept root route for restricted clients to display quota alert sheet
+    _server.on("/", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        String clientIp = req->client() ? req->client()->remoteIP().toString() : "";
+        if (clientIp.length() > 0 && deviceManager.isClientRestricted(clientIp)) {
+            req->redirect("http://" + _wifiMgr->getIP() + "/quota-notice");
+            return;
+        }
+        req->send(LittleFS, "/index.html", "text/html");
+    });
+
     // Serve the SPA from LittleFS (no-cache ensures new deployments load immediately)
     _server.serveStatic("/", LittleFS, "/")
            .setDefaultFile("index.html")
@@ -275,6 +286,40 @@ void WebServer::_setupApiRoutes() {
         NULL,
         [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
             _handleQuotaSet(req, data, len);
+        });
+
+    // ── Captive Portal & Quota Notice Endpoints ──────────────────
+    _server.on("/hotspot-detect.html", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCaptiveProbe(req); });
+
+    _server.on("/generate_204", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCaptiveProbe(req); });
+
+    _server.on("/gen_204", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCaptiveProbe(req); });
+
+    _server.on("/connecttest.txt", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCaptiveProbe(req); });
+
+    _server.on("/ncsi.txt", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCaptiveProbe(req); });
+
+    _server.on("/canonical.html", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCaptiveProbe(req); });
+
+    _server.on("/success.txt", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleCaptiveProbe(req); });
+
+    _server.on("/quota-notice", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { _handleQuotaNotice(req); });
+
+    _server.on("/api/device/request-waiver", HTTP_POST,
+        [this](AsyncWebServerRequest* req) {
+            _handleRequestWaiver(req, nullptr, 0);
+        },
+        NULL,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+            _handleRequestWaiver(req, data, len);
         });
 
     // ── Gateway & Router Parity Endpoints ────────────────────────
@@ -766,6 +811,110 @@ void WebServer::_handleQuotaSet(AsyncWebServerRequest* request, uint8_t* data, s
     request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
 }
 
+void WebServer::_handleCaptiveProbe(AsyncWebServerRequest* request) {
+    String clientIp = request->client() ? request->client()->remoteIP().toString() : "";
+    bool restricted = (clientIp.length() > 0) && deviceManager.isClientRestricted(clientIp);
+
+    if (restricted) {
+        request->redirect("http://" + _wifiMgr->getIP() + "/quota-notice");
+        return;
+    }
+
+    String url = request->url();
+    if (url.indexOf("hotspot-detect") >= 0) {
+        request->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+    } else if (url.indexOf("connecttest") >= 0) {
+        request->send(200, "text/plain", "Microsoft Connect Test");
+    } else if (url.indexOf("ncsi") >= 0) {
+        request->send(200, "text/plain", "Microsoft NCSI");
+    } else if (url.indexOf("canonical") >= 0 || url.indexOf("success") >= 0) {
+        request->send(200, "text/plain", "success\n");
+    } else {
+        request->send(204);
+    }
+}
+
+void WebServer::_handleQuotaNotice(AsyncWebServerRequest* request) {
+    String clientIp = request->client() ? request->client()->remoteIP().toString() : "";
+    String mac = "";
+    String hostname = "";
+    uint64_t dailyBytes = 0;
+
+    if (clientIp.length() > 0) {
+        deviceManager.getClientDetailsByIp(clientIp, mac, hostname, dailyBytes);
+    }
+
+    ClientRestrictionReason reason = deviceManager.getClientRestrictionReason(clientIp);
+    QuotaLimits quotas;
+    scheduler.getQuotas(&quotas);
+    uint32_t waiverRemaining = (mac.length() > 0) ? scheduler.getWaiverRemainingSecs(mac) : 0;
+
+    String html = buildQuotaNoticeHtml(
+        clientIp,
+        mac,
+        hostname,
+        reason,
+        dailyBytes,
+        quotas.dailyEnabled ? quotas.dailyLimitBytes : 0,
+        waiverRemaining
+    );
+
+    AsyncWebServerResponse* resp = request->beginResponse(200, "text/html; charset=utf-8", html);
+    resp->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    request->send(resp);
+}
+
+void WebServer::_handleRequestWaiver(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+    if (!_checkRateLimit(request)) return;
+
+    String clientIp = request->client() ? request->client()->remoteIP().toString() : "";
+    String mac = "";
+    String hostname = "";
+    uint64_t dailyBytes = 0;
+    uint32_t secs = 1800; // default 30 mins
+
+    if (data && len > 0) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+            if (doc["mac"].is<const char*>() && strlen(doc["mac"]) > 0) {
+                mac = doc["mac"].as<String>();
+            }
+            if (doc["durationSecs"].is<uint32_t>()) {
+                secs = doc["durationSecs"].as<uint32_t>();
+            } else if (doc["minutes"].is<uint32_t>() || doc["minutes"].is<int>()) {
+                secs = doc["minutes"].as<uint32_t>() * 60;
+            }
+        }
+    }
+
+    if (mac.length() == 0 && clientIp.length() > 0) {
+        bool found = deviceManager.getClientDetailsByIp(clientIp, mac, hostname, dailyBytes);
+        if (!found || mac.length() == 0) {
+            deviceManager.registerClientActivity(clientIp.c_str());
+            deviceManager.getClientDetailsByIp(clientIp, mac, hostname, dailyBytes);
+        }
+    }
+
+    if (mac.length() == 0) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Unable to determine device MAC\"}");
+        return;
+    }
+
+    scheduler.grantWaiver(mac, secs);
+    Serial.printf("[Waiver] Emergency waiver granted: %s (%s) for %u secs\n", mac.c_str(), clientIp.c_str(), secs);
+
+    JsonDocument resp;
+    resp["status"] = "ok";
+    resp["mac"] = mac;
+    resp["ip"] = clientIp;
+    resp["hostname"] = hostname;
+    resp["grantedSecs"] = secs;
+
+    String out;
+    serializeJson(resp, out);
+    request->send(200, "application/json", out);
+}
+
 // ── Router Gateway Parity Handlers ───────────────────────────────
 
 void WebServer::_handleRouterReboot(AsyncWebServerRequest* request) {
@@ -969,6 +1118,15 @@ void WebServer::_handleNotFound(AsyncWebServerRequest* request) {
         request->send(404, "application/json",
                       "{\"error\":\"Not found\",\"path\":\"" + request->url() + "\"}");
         return;
+    }
+
+    // If client is restricted, redirect any unmapped HTTP request to the quota notice
+    String clientIp = request->client() ? request->client()->remoteIP().toString() : "";
+    if (clientIp.length() > 0 && deviceManager.isClientRestricted(clientIp)) {
+        if (!request->url().equals("/quota-notice")) {
+            request->redirect("http://" + _wifiMgr->getIP() + "/quota-notice");
+            return;
+        }
     }
 
     // For all other routes — serve index.html (SPA fallback)

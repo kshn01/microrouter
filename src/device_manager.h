@@ -4,6 +4,7 @@
 #include <vector>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include "restriction_policy.h"
 
 // ╔══════════════════════════════════════════════════════════════╗
 // ║  DeviceManager — Active Clients, NetBIOS & Access Control   ║
@@ -48,6 +49,8 @@ public:
     bool setParentalControl(const String& mac, bool enabled);
     bool isParentalControl(const String& mac) const;
     bool isClientRestricted(const String& ip) const;
+    ClientRestrictionReason getClientRestrictionReason(const String& ip) const;
+    bool getClientDetailsByIp(const String& ip, String& outMac, String& outHostname, uint64_t& outDailyBytes);
 
     String queryNetBIOS(const String& ipStr);
 
