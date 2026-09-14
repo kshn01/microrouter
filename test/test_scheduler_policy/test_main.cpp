@@ -195,12 +195,26 @@ void test_dns_captive_probe_domains() {
     TEST_ASSERT_TRUE(isCaptiveProbeDomain("msftconnecttest.com"));
     TEST_ASSERT_TRUE(isCaptiveProbeDomain("www.msftncsi.com"));
     TEST_ASSERT_TRUE(isCaptiveProbeDomain("detectportal.firefox.com"));
+    TEST_ASSERT_TRUE(isCaptiveProbeDomain("connectivitycheck.samsung.com"));
 
     TEST_ASSERT_FALSE(isCaptiveProbeDomain("google.com"));
     TEST_ASSERT_FALSE(isCaptiveProbeDomain("apple.com"));
     TEST_ASSERT_FALSE(isCaptiveProbeDomain("youtube.com"));
     TEST_ASSERT_FALSE(isCaptiveProbeDomain("microsoft.com"));
     TEST_ASSERT_FALSE(isCaptiveProbeDomain(nullptr));
+}
+
+void test_waiver_limit_and_pin_policy() {
+    TEST_ASSERT_TRUE(canGrantWaiverWithoutPin(0, 2));
+    TEST_ASSERT_TRUE(canGrantWaiverWithoutPin(1, 2));
+    TEST_ASSERT_FALSE(canGrantWaiverWithoutPin(2, 2));
+    TEST_ASSERT_FALSE(canGrantWaiverWithoutPin(3, 2));
+
+    TEST_ASSERT_TRUE(verifyWaiverPin("1234", "1234"));
+    TEST_ASSERT_FALSE(verifyWaiverPin("0000", "1234"));
+    TEST_ASSERT_FALSE(verifyWaiverPin(nullptr, "1234"));
+    TEST_ASSERT_FALSE(verifyWaiverPin("1234", nullptr));
+    TEST_ASSERT_FALSE(verifyWaiverPin("1234", ""));
 }
 
 int main() {
@@ -220,6 +234,7 @@ int main() {
     RUN_TEST(test_restriction_policy_quota_exceeded_restricts_device);
     RUN_TEST(test_restriction_policy_detail_reasons);
     RUN_TEST(test_dns_captive_probe_domains);
+    RUN_TEST(test_waiver_limit_and_pin_policy);
     RUN_TEST(test_rate_limiter_burst_and_replenish);
     RUN_TEST(test_rate_limiter_isolates_ips);
     return UNITY_END();

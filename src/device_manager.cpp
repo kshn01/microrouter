@@ -71,7 +71,7 @@ void DeviceManager::loop() {
     }
 }
 
-String DeviceManager::_resolveArpMac(const char* ipStr) {
+String DeviceManager::_resolveArpMac(const char* ipStr) const {
     if (!ipStr || ipStr[0] == '\0') return "";
     ip4_addr_t ipaddr;
     if (!ip4addr_aton(ipStr, &ipaddr)) return "";
@@ -241,9 +241,6 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         if (hostname.length() > 0) strncpy(_devices[idx].hostname, hostname.c_str(), sizeof(_devices[idx].hostname) - 1);
         if (band.length() > 0) {
             strncpy(_devices[idx].band, band.c_str(), sizeof(_devices[idx].band) - 1);
-            if (strcasecmp(band.c_str(), "Guest") == 0) {
-                _devices[idx].parentalControl = true;
-            }
         }
         if (rssi != 0) _devices[idx].rssi = rssi;
         _devices[idx].online = online;
@@ -267,7 +264,21 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         _devices[idx].rssi = rssi;
         _devices[idx].online = online;
         _devices[idx].blocked = false;
-        _devices[idx].parentalControl = (strcasecmp(band.c_str(), "Guest") == 0);
+
+        Preferences pPrefs;
+        bool hasSavedPref = false;
+        if (pPrefs.begin("dev_parental", true)) {
+            if (pPrefs.isKey("macs")) {
+                hasSavedPref = true;
+                String pList = pPrefs.getString("macs", "");
+                _devices[idx].parentalControl = (pList.indexOf(mac) >= 0);
+            }
+            pPrefs.end();
+        }
+        if (!hasSavedPref) {
+            _devices[idx].parentalControl = (strcasecmp(band.c_str(), "Guest") == 0);
+        }
+
         _devices[idx].dlBytes = dl;
         _devices[idx].ulBytes = ul;
         _devices[idx].hourlyUsageBytes = (dl + ul);
@@ -277,14 +288,6 @@ void DeviceManager::updateDevice(const String& mac, const String& ip, const Stri
         _devices[idx].hourlyLimitHitCount = 0;
         _devices[idx].lastSeen = nowSec;
         _devices[idx].netbiosTries = 0;
-        Preferences pPrefs;
-        if (pPrefs.begin("dev_parental", true)) {
-            String pList = pPrefs.getString("macs", "");
-            pPrefs.end();
-            if (pList.indexOf(mac) >= 0) {
-                _devices[idx].parentalControl = true;
-            }
-        }
         _rollUsageWindows(_devices[idx]);
     }
     if (_mutex) xSemaphoreGive(_mutex);
@@ -382,6 +385,7 @@ bool DeviceManager::setBlocked(const String& mac, bool blocked) {
     }
     if (_mutex) xSemaphoreGive(_mutex);
 
+    invalidateRestrictionCache();
     _saveBlockedMacs();
     return found;
 }
@@ -404,6 +408,7 @@ bool DeviceManager::setParentalControl(const String& mac, bool enabled) {
     }
     if (_mutex) xSemaphoreGive(_mutex);
 
+    invalidateRestrictionCache();
     _saveParentalMacs();
     return found;
 }
@@ -422,40 +427,51 @@ bool DeviceManager::isParentalControl(const String& mac) const {
 ClientRestrictionReason DeviceManager::getClientRestrictionReason(const String& ip) const {
     if (ip.length() == 0) return RESTRICTION_NONE;
 
-    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
-    ClientRestrictionReason reason = RESTRICTION_NONE;
-    QuotaLimits quotas;
-    scheduler.getQuotas(&quotas);
-    bool isCurfew = scheduler.isCurfewActive();
-
-    for (size_t i = 0; i < _deviceCount; i++) {
-        if (strcmp(_devices[i].ip, ip.c_str()) == 0) {
-            const ClientDevice& device = _devices[i];
-            bool isGuest = strcasecmp(device.band, "Guest") == 0;
-            bool isTarget = device.parentalControl || isGuest;
-            bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
-
-            ClientRestrictionInput input = {
-                .isBlocked           = device.blocked,
-                .isParentalTarget    = isTarget,
-                .hasActiveWaiver     = hasWaiver,
-                .isCurfewActive      = isCurfew,
-                .hourlyQuotaEnabled  = quotas.hourlyEnabled,
-                .dailyQuotaEnabled   = quotas.dailyEnabled,
-                .hourlyUsageBytes    = device.hourlyUsageBytes,
-                .hourlyLimitBytes    = quotas.hourlyLimitBytes,
-                .dailyUsageBytes     = device.dailyUsageBytes,
-                .dailyLimitBytes     = quotas.dailyLimitBytes,
-            };
-
-            ClientRestrictionReason r = evaluateClientRestrictionDetail(input);
-            if (r != RESTRICTION_NONE) {
-                reason = r;
-                break;
-            }
+    unsigned long nowMs = millis();
+    // Fast path: check 3-second cache
+    for (size_t i = 0; i < RESTRICTION_CACHE_SIZE; i++) {
+        if (_restrictionCache[i].expiryMs > nowMs && strcmp(_restrictionCache[i].ip, ip.c_str()) == 0) {
+            return _restrictionCache[i].reason;
         }
     }
+
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    ClientRestrictionReason reason = RESTRICTION_NONE;
+    int idx = _findDeviceIndexByIp(ip);
+    if (idx >= 0) {
+        QuotaLimits quotas;
+        scheduler.getQuotas(&quotas);
+        bool isCurfew = scheduler.isCurfewActive();
+
+        const ClientDevice& device = _devices[idx];
+        bool isTarget = device.parentalControl;
+        bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
+
+        ClientRestrictionInput input = {
+            .isBlocked           = device.blocked,
+            .isParentalTarget    = isTarget,
+            .hasActiveWaiver     = hasWaiver,
+            .isCurfewActive      = isCurfew,
+            .hourlyQuotaEnabled  = quotas.hourlyEnabled,
+            .dailyQuotaEnabled   = quotas.dailyEnabled,
+            .hourlyUsageBytes    = device.hourlyUsageBytes,
+            .hourlyLimitBytes    = quotas.hourlyLimitBytes,
+            .dailyUsageBytes     = device.dailyUsageBytes,
+            .dailyLimitBytes     = quotas.dailyLimitBytes,
+        };
+
+        reason = evaluateClientRestrictionDetail(input);
+    }
     if (_mutex) xSemaphoreGive(_mutex);
+
+    // Update fast-path cache (TTL 3 seconds)
+    size_t slot = _restrictionCacheHead % RESTRICTION_CACHE_SIZE;
+    _restrictionCacheHead++;
+    strncpy(_restrictionCache[slot].ip, ip.c_str(), sizeof(_restrictionCache[slot].ip) - 1);
+    _restrictionCache[slot].ip[sizeof(_restrictionCache[slot].ip) - 1] = '\0';
+    _restrictionCache[slot].reason = reason;
+    _restrictionCache[slot].expiryMs = nowMs + 3000;
+
     return reason;
 }
 
@@ -463,7 +479,7 @@ bool DeviceManager::isClientRestricted(const String& ip) const {
     return getClientRestrictionReason(ip) != RESTRICTION_NONE;
 }
 
-bool DeviceManager::getClientDetailsByIp(const String& ip, String& outMac, String& outHostname, uint64_t& outDailyBytes) {
+bool DeviceManager::getClientDetailsByIp(const String& ip, String& outMac, String& outHostname, uint64_t& outDailyBytes) const {
     if (ip.length() == 0) return false;
     bool found = false;
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
@@ -486,6 +502,72 @@ bool DeviceManager::getClientDetailsByIp(const String& ip, String& outMac, Strin
         }
     }
     return found;
+}
+
+bool DeviceManager::getClientQuotaStatus(const String& ip,
+                                        String& outMac,
+                                        String& outHostname,
+                                        uint64_t& outDailyBytes,
+                                        ClientRestrictionReason& outReason,
+                                        uint32_t& outWaiverRemainingSecs) const {
+    if (ip.length() == 0) return false;
+    outMac = "";
+    outHostname = "Client";
+    outDailyBytes = 0;
+    outReason = RESTRICTION_NONE;
+    outWaiverRemainingSecs = 0;
+
+    bool found = false;
+    QuotaLimits quotas;
+    scheduler.getQuotas(&quotas);
+    bool isCurfew = scheduler.isCurfewActive();
+
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    int idx = _findDeviceIndexByIp(ip);
+    if (idx >= 0) {
+        const ClientDevice& device = _devices[idx];
+        outMac = device.mac;
+        outHostname = device.hostname;
+        outDailyBytes = device.dailyUsageBytes;
+        found = true;
+
+        bool isTarget = device.parentalControl;
+        bool hasWaiver = scheduler.hasActiveWaiver(device.mac);
+        outWaiverRemainingSecs = scheduler.getWaiverRemainingSecs(device.mac);
+
+        ClientRestrictionInput input = {
+            .isBlocked           = device.blocked,
+            .isParentalTarget    = isTarget,
+            .hasActiveWaiver     = hasWaiver,
+            .isCurfewActive      = isCurfew,
+            .hourlyQuotaEnabled  = quotas.hourlyEnabled,
+            .dailyQuotaEnabled   = quotas.dailyEnabled,
+            .hourlyUsageBytes    = device.hourlyUsageBytes,
+            .hourlyLimitBytes    = quotas.hourlyLimitBytes,
+            .dailyUsageBytes     = device.dailyUsageBytes,
+            .dailyLimitBytes     = quotas.dailyLimitBytes,
+        };
+        outReason = evaluateClientRestrictionDetail(input);
+    }
+    if (_mutex) xSemaphoreGive(_mutex);
+
+    if (!found) {
+        String arpMac = _resolveArpMac(ip.c_str());
+        if (arpMac.length() > 0) {
+            outMac = arpMac;
+            outHostname = "Client";
+            outDailyBytes = 0;
+            outWaiverRemainingSecs = scheduler.getWaiverRemainingSecs(arpMac);
+            found = true;
+        }
+    }
+    return found;
+}
+
+void DeviceManager::invalidateRestrictionCache() {
+    for (size_t i = 0; i < RESTRICTION_CACHE_SIZE; i++) {
+        _restrictionCache[i].expiryMs = 0;
+    }
 }
 
 void DeviceManager::_saveBlockedMacs() {

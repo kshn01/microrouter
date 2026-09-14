@@ -41,5 +41,6 @@ inline bool isCaptiveProbeDomain(const char* domain) {
            domainMatches(domain, "www.msftconnecttest.com") ||
            domainMatches(domain, "msftconnecttest.com") ||
            domainMatches(domain, "www.msftncsi.com") ||
-           domainMatches(domain, "detectportal.firefox.com");
+           domainMatches(domain, "detectportal.firefox.com") ||
+           domainMatches(domain, "connectivitycheck.samsung.com");
 }

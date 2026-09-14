@@ -117,16 +117,34 @@ String Scheduler::getTimeOnly() const {
     return String(buf);
 }
 
-bool Scheduler::grantWaiver(const String& mac, uint32_t durationSecs) {
+bool Scheduler::grantWaiver(const String& mac, uint32_t durationSecs, bool isAdminOverride) {
     time_t now = time(nullptr);
+    uint32_t currentDay = (now > 1700000000) ? (uint32_t)(now / 86400) : 0;
     time_t exp = now + durationSecs;
 
     // Search existing
     for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {
-        if (_waivers[i].active && strcasecmp(_waivers[i].mac, mac.c_str()) == 0) {
+        if (strcasecmp(_waivers[i].mac, mac.c_str()) == 0) {
+            // Check day rollover
+            if (_waivers[i].lastGrantEpochDay != currentDay) {
+                _waivers[i].waiverCountToday = 0;
+                _waivers[i].lastGrantEpochDay = currentDay;
+            }
+
+            if (!isAdminOverride && !canGrantWaiverWithoutPin(_waivers[i].waiverCountToday, _maxWaiversPerDay)) {
+                Serial.printf("[Scheduler] Waiver denied for %s: daily cap (%u/%u) reached\n",
+                              mac.c_str(), _waivers[i].waiverCountToday, _maxWaiversPerDay);
+                return false;
+            }
+
             _waivers[i].expireEpoch = exp;
+            _waivers[i].active = true;
+            if (!isAdminOverride) {
+                _waivers[i].waiverCountToday++;
+            }
             _saveWaivers();
-            Serial.printf("[Scheduler] Extended waiver for %s until %lu\n", mac.c_str(), (unsigned long)exp);
+            Serial.printf("[Scheduler] Extended waiver for %s until %lu (used %u/%u today)\n",
+                          mac.c_str(), (unsigned long)exp, _waivers[i].waiverCountToday, _maxWaiversPerDay);
             return true;
         }
     }
@@ -135,10 +153,14 @@ bool Scheduler::grantWaiver(const String& mac, uint32_t durationSecs) {
     for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {
         if (!_waivers[i].active) {
             strncpy(_waivers[i].mac, mac.c_str(), sizeof(_waivers[i].mac) - 1);
+            _waivers[i].mac[sizeof(_waivers[i].mac) - 1] = '\0';
             _waivers[i].expireEpoch = exp;
             _waivers[i].active = true;
+            _waivers[i].lastGrantEpochDay = currentDay;
+            _waivers[i].waiverCountToday = isAdminOverride ? 0 : 1;
             _saveWaivers();
-            Serial.printf("[Scheduler] Granted waiver for %s (+%u s)\n", mac.c_str(), durationSecs);
+            Serial.printf("[Scheduler] Granted waiver for %s (+%u s, used %u/%u today)\n",
+                          mac.c_str(), durationSecs, _waivers[i].waiverCountToday, _maxWaiversPerDay);
             return true;
         }
     }
@@ -179,6 +201,43 @@ uint32_t Scheduler::getWaiverRemainingSecs(const String& mac) const {
     return 0;
 }
 
+uint8_t Scheduler::getWaiverCountToday(const String& mac) const {
+    time_t now = time(nullptr);
+    uint32_t currentDay = (now > 1700000000) ? (uint32_t)(now / 86400) : 0;
+    for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {
+        if (strcasecmp(_waivers[i].mac, mac.c_str()) == 0) {
+            if (_waivers[i].lastGrantEpochDay != currentDay) {
+                return 0;
+            }
+            return _waivers[i].waiverCountToday;
+        }
+    }
+    return 0;
+}
+
+uint8_t Scheduler::getMaxWaiversPerDay() const {
+    return _maxWaiversPerDay;
+}
+
+void Scheduler::setMaxWaiversPerDay(uint8_t maxWaivers) {
+    _maxWaiversPerDay = maxWaivers;
+    _saveWaivers();
+}
+
+bool Scheduler::hasParentalPin() const {
+    return strlen(_parentalPin) > 0;
+}
+
+bool Scheduler::verifyParentalPin(const String& pin) const {
+    return verifyWaiverPin(pin.c_str(), _parentalPin);
+}
+
+void Scheduler::setParentalPin(const String& pin) {
+    strncpy(_parentalPin, pin.c_str(), sizeof(_parentalPin) - 1);
+    _parentalPin[sizeof(_parentalPin) - 1] = '\0';
+    _saveWaivers();
+}
+
 void Scheduler::_checkExpirations() {
     time_t now = time(nullptr);
     bool changed = false;
@@ -198,6 +257,8 @@ void Scheduler::_saveWaivers() {
     Preferences prefs;
     prefs.begin("microrouter", false);
     prefs.putBytes("waivers", _waivers, sizeof(_waivers));
+    prefs.putUChar("w_max_day", _maxWaiversPerDay);
+    prefs.putString("p_pin", _parentalPin);
     prefs.end();
 }
 
@@ -207,13 +268,21 @@ void Scheduler::_loadWaivers() {
     size_t len = prefs.getBytesLength("waivers");
     if (len == sizeof(_waivers)) {
         prefs.getBytes("waivers", _waivers, sizeof(_waivers));
+    } else {
+        memset(_waivers, 0, sizeof(_waivers));
     }
+    _maxWaiversPerDay = prefs.getUChar("w_max_day", 2);
+    String pin = prefs.getString("p_pin", "");
+    strncpy(_parentalPin, pin.c_str(), sizeof(_parentalPin) - 1);
+    _parentalPin[sizeof(_parentalPin) - 1] = '\0';
     prefs.end();
 }
 
 String Scheduler::getWaiversJson() const {
     JsonDocument doc;
     JsonArray arr = doc["waivers"].to<JsonArray>();
+    doc["maxPerDay"] = _maxWaiversPerDay;
+    doc["hasPin"] = hasParentalPin();
     time_t now = time(nullptr);
 
     for (int i = 0; i < MAX_TEMP_WAIVERS; i++) {
@@ -222,6 +291,7 @@ String Scheduler::getWaiversJson() const {
             w["mac"]          = _waivers[i].mac;
             w["expireEpoch"]  = (uint32_t)_waivers[i].expireEpoch;
             w["remainingSecs"]= (uint32_t)(_waivers[i].expireEpoch - now);
+            w["usedToday"]    = _waivers[i].waiverCountToday;
         }
     }
 

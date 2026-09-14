@@ -50,7 +50,14 @@ public:
     bool isParentalControl(const String& mac) const;
     bool isClientRestricted(const String& ip) const;
     ClientRestrictionReason getClientRestrictionReason(const String& ip) const;
-    bool getClientDetailsByIp(const String& ip, String& outMac, String& outHostname, uint64_t& outDailyBytes);
+    bool getClientDetailsByIp(const String& ip, String& outMac, String& outHostname, uint64_t& outDailyBytes) const;
+    bool getClientQuotaStatus(const String& ip,
+                             String& outMac,
+                             String& outHostname,
+                             uint64_t& outDailyBytes,
+                             ClientRestrictionReason& outReason,
+                             uint32_t& outWaiverRemainingSecs) const;
+    void invalidateRestrictionCache();
 
     String queryNetBIOS(const String& ipStr);
 
@@ -75,10 +82,19 @@ private:
     void _loadParentalMacs();
     void _scanSoftAPStations();
     void _rollUsageWindows(ClientDevice& device);
-    String _resolveArpMac(const char* ipStr);
+    String _resolveArpMac(const char* ipStr) const;
     void _loadGuestHistory();
     void _saveGuestHistory();
     void _archiveDayToHistory(const ClientDevice& device, uint32_t completedEpochDay);
+
+    struct RestrictionCacheEntry {
+        char                    ip[16];
+        ClientRestrictionReason reason;
+        unsigned long           expiryMs;
+    };
+    static constexpr size_t RESTRICTION_CACHE_SIZE = 16;
+    mutable RestrictionCacheEntry _restrictionCache[RESTRICTION_CACHE_SIZE] = {};
+    mutable size_t                _restrictionCacheHead = 0;
 
     struct DailyHistorySlot {
         uint32_t epochDay;
